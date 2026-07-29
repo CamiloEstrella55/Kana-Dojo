@@ -23,8 +23,16 @@ export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
  */
 const RELOAD_FLAG = 'kanadojo_chunk_reload';
 
-// Only attempt one auto-reload per session to prevent infinite loops
-if (typeof window !== 'undefined' && !sessionStorage.getItem(RELOAD_FLAG)) {
+// Only attempt one auto-reload per session to prevent infinite loops.
+// Disabled for the on-device mobile bundle: chunks are local and can never be
+// "stale", so this handler would only turn a transient/native import hiccup
+// into an endless reload loop (blank screen flashing white).
+const chunkReloadEnabled =
+  process.env.NEXT_PUBLIC_MOBILE_EXPORT !== '1' &&
+  typeof window !== 'undefined' &&
+  !sessionStorage.getItem(RELOAD_FLAG);
+
+if (chunkReloadEnabled) {
   window.addEventListener('error', event => {
     const error = event.error;
     const message = event.message || '';

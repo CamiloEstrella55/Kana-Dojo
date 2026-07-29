@@ -12,7 +12,27 @@ export default function ServiceWorkerRegistration() {
     let cancelled = false;
     let onLoad: (() => void) | undefined;
 
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+    // The on-device mobile bundle serves everything locally, so a service
+    // worker is unnecessary and can interfere with the Capacitor WebView.
+    const skipOnNative = process.env.NEXT_PUBLIC_MOBILE_EXPORT === '1';
+
+    if (
+      skipOnNative &&
+      typeof navigator !== 'undefined' &&
+      'serviceWorker' in navigator
+    ) {
+      // Remove any worker left over from a previous build.
+      void navigator.serviceWorker
+        .getRegistrations()
+        .then(regs => regs.forEach(r => void r.unregister()))
+        .catch(() => {});
+    }
+
+    if (
+      !skipOnNative &&
+      typeof window !== 'undefined' &&
+      'serviceWorker' in navigator
+    ) {
     const registerServiceWorker = async () => {
       try {
         const registration = await navigator.serviceWorker.register('/sw.js', {
