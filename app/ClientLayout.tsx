@@ -1,14 +1,12 @@
 'use client';
 import clsx from 'clsx';
-import { useState, useEffect, startTransition, useMemo, useRef } from 'react';
+import { useState, useEffect, startTransition, useMemo } from 'react';
 import usePreferencesStore from '@/features/Preferences/store/usePreferencesStore';
 import { useCrazyMode } from '@/features/CrazyMode';
 import { useShallow } from 'zustand/react/shallow';
 import { usePathname } from 'next/navigation';
 import { ScrollRestoration } from 'next-scroll-restoration';
 import WelcomeModal from '@/shared/ui-composite/Modals/WelcomeModal';
-import { DonationModal } from '@/features/Preferences';
-import useOnboardingStore from '@/shared/store/useOnboardingStore';
 import {
   AchievementNotificationContainer,
   AchievementIntegration,
@@ -28,7 +26,6 @@ import GlobalAudioController from '@/shared/ui-composite/layout/GlobalAudioContr
 import { useClick } from '@/shared/hooks/generic/useAudio';
 import ServiceWorkerRegistration from '@/shared/ui-composite/ServiceWorkerRegistration';
 import VisualEffectsRenderer from '@/features/Preferences/components/renderers/VisualEffectsRenderer';
-import TransitionAdvertisementOverlay from '@/shared/ui-composite/Game/TransitionAdvertisementOverlay';
 import {
   AuthProvider,
   AuthModal,
@@ -102,10 +99,6 @@ export default function ClientLayout({
 
   // 3. Create state to hold the fonts module
   const [fontsModule, setFontsModule] = useState<FontObject[] | null>(null);
-  const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
-  const [isTransitionAdvertisementOpen, setIsTransitionAdvertisementOpen] =
-    useState(false);
-  const hasSeenWelcome = useOnboardingStore(state => state.hasSeenWelcome);
 
   // Memoize fontClassName calculation to prevent recalculation on every render (5-10ms savings)
   const fontClassName = useMemo(() => {
@@ -122,105 +115,6 @@ export default function ClientLayout({
   }, []);
 
   const pathname = usePathname();
-  const previousPathnameRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const previousPathname = previousPathnameRef.current;
-    const isTrainingRoute = (path: string) =>
-      /^\/(?:[a-z]{2}\/)?(?:kana|kanji|vocabulary)\/train(?:\/|$)/.test(path);
-    const isDojoMenuRoute = (path: string) =>
-      /^\/(?:[a-z]{2}\/)?(?:kana|kanji|vocabulary)\/?$/.test(path);
-
-    let showAdvertisementTimer: ReturnType<typeof setTimeout> | undefined;
-
-    if (
-      previousPathname &&
-      isTrainingRoute(previousPathname) &&
-      isDojoMenuRoute(pathname)
-    ) {
-      showAdvertisementTimer = setTimeout(() => {
-        setIsTransitionAdvertisementOpen(true);
-      }, 0);
-    }
-
-    previousPathnameRef.current = pathname;
-
-    return () => {
-      if (showAdvertisementTimer) clearTimeout(showAdvertisementTimer);
-    };
-  }, [pathname]);
-
-  useEffect(() => {
-    const isDev = process.env.NODE_ENV === 'development';
-    const isPreviewDeployment =
-      process.env.NODE_ENV === 'production' &&
-      process.env.NEXT_PUBLIC_VERCEL_ENV !== 'production';
-    const isTargetRoute = /\/(kana|kanji|vocabulary)(\/|$)/.test(pathname);
-    const isPreferencesRoute = /\/preferences(\/|$)/.test(pathname);
-    const isProgressRoute = /\/progress(\/|$)/.test(pathname);
-    const isBaseRoute =
-      pathname === '/' || pathname === '/en' || pathname === '/ja';
-    const donationLastPathKey = 'donation-modal-last-pathname';
-    const donationCycleCountKey = 'donation-modal-cycle-count';
-    const previousPathname =
-      typeof window !== 'undefined'
-        ? sessionStorage.getItem(donationLastPathKey)
-        : null;
-
-    if (isBaseRoute) {
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem(donationLastPathKey, pathname);
-      }
-      setIsDonationModalOpen(false);
-      return;
-    }
-
-    // TEMPORARILY COMMENTED OUT: auto-show on preferences in dev/preview
-    // if ((isDev || isPreviewDeployment) && isPreferencesRoute) {
-    //   if (typeof window !== 'undefined') {
-    //     sessionStorage.setItem(donationLastPathKey, pathname);
-    //   }
-    //   const timer = setTimeout(() => {
-    //     setIsDonationModalOpen(true);
-    //   }, 500);
-    //   return () => clearTimeout(timer);
-    // }
-
-    const cameFromHome =
-      previousPathname === '/' ||
-      previousPathname === '/en' ||
-      previousPathname === '/ja';
-
-    const shouldCycle =
-      (hasSeenWelcome && isTargetRoute && cameFromHome) ||
-      (hasSeenWelcome && (isPreferencesRoute || isProgressRoute));
-
-    if (shouldCycle) {
-      const nextCount =
-        Number(
-          typeof window !== 'undefined'
-            ? sessionStorage.getItem(donationCycleCountKey)
-            : null,
-        ) + 1;
-
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem(donationCycleCountKey, String(nextCount));
-        sessionStorage.setItem(donationLastPathKey, pathname);
-      }
-
-      if (nextCount % 2 === 0) {
-        const timer = setTimeout(() => {
-          setIsDonationModalOpen(true);
-        }, 500);
-        return () => clearTimeout(timer);
-      }
-      return;
-    }
-
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem(donationLastPathKey, pathname);
-    }
-  }, [hasSeenWelcome, pathname]);
 
   useEffect(() => {
     startTransition(() => {
@@ -370,21 +264,8 @@ export default function ClientLayout({
         <AccountButton />
       </div>
       {children}
-      <TransitionAdvertisementOverlay
-        isOpen={isTransitionAdvertisementOpen}
-        onDismiss={() => setIsTransitionAdvertisementOpen(false)}
-      />
       <ScrollRestoration />
       <WelcomeModal />
-      <DonationModal
-        open={isDonationModalOpen}
-        onOpenChange={open => {
-          setIsDonationModalOpen(open);
-          if (!open && typeof window !== 'undefined') {
-            sessionStorage.setItem('donation-modal-seen', 'true');
-          }
-        }}
-      />
       <AchievementNotificationContainer />
       {/* hamza */}
       <AchievementPromptsContainer />
