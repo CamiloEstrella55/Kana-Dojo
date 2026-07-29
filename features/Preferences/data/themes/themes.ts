@@ -334,12 +334,10 @@ function ensureCustomThemesLoaded(): void {
   const isBuiltInThemeId = (id: string) => builtInThemeIds.has(id);
 
   // --- Custom color themes (from useCustomThemeStore) ---
-  useCustomThemeStore
-    .getState()
-    .themes.forEach(theme => {
-      if (isBuiltInThemeId(theme.id)) return;
-      themeMap.set(theme.id, buildThemeFromTemplate(theme));
-    });
+  useCustomThemeStore.getState().themes.forEach(theme => {
+    if (isBuiltInThemeId(theme.id)) return;
+    themeMap.set(theme.id, buildThemeFromTemplate(theme));
+  });
 
   useCustomThemeStore.subscribe(state => {
     state.themes.forEach(theme => {
@@ -404,6 +402,15 @@ export function applyTheme(themeId: string) {
   root.style.setProperty('--main-color', effectiveTheme.mainColor);
   root.style.setProperty('--main-color-accent', effectiveTheme.mainColorAccent);
 
+  // Cache the resolved background so the anti-flash inline script (in the root
+  // layout <head>) can paint the correct theme color on the very next launch,
+  // before React hydrates. Prevents the white flash on the native app.
+  try {
+    localStorage.setItem('kd-theme-bg', effectiveTheme.backgroundColor);
+  } catch {
+    /* storage unavailable — the CSS #0b0b0f fallback still applies */
+  }
+
   if (effectiveTheme.secondaryColor) {
     root.style.setProperty('--secondary-color', effectiveTheme.secondaryColor);
     root.style.setProperty(
@@ -432,16 +439,18 @@ export function applyTheme(themeId: string) {
 
       if (isCustomWallpaper) {
         const appliedUrl = wallpaper.url;
-        void customWallpapers.ensureObjectUrl(resolvedThemeId).then(objectUrl => {
-          if (
-            objectUrl &&
-            objectUrl !== appliedUrl &&
-            usePreferencesStore.getState().theme === resolvedThemeId
-          ) {
-            syncCustomWallpapers();
-            applyTheme(resolvedThemeId);
-          }
-        });
+        void customWallpapers
+          .ensureObjectUrl(resolvedThemeId)
+          .then(objectUrl => {
+            if (
+              objectUrl &&
+              objectUrl !== appliedUrl &&
+              usePreferencesStore.getState().theme === resolvedThemeId
+            ) {
+              syncCustomWallpapers();
+              applyTheme(resolvedThemeId);
+            }
+          });
       }
     }
   } else {

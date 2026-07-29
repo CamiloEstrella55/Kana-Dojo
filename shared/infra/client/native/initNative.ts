@@ -16,8 +16,9 @@ let initPromise: Promise<void> | null = null;
 /** True when running inside the Capacitor native runtime. */
 export function isNativeApp(): boolean {
   if (typeof window === 'undefined') return false;
-  const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } })
-    .Capacitor;
+  const cap = (
+    window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }
+  ).Capacitor;
   return Boolean(cap?.isNativePlatform?.());
 }
 
@@ -49,6 +50,16 @@ export function ensureNativeInit(): Promise<void> {
       await StatusBar.setStyle({ style: Style.Dark });
     } catch {
       /* status bar plugin not available on this platform */
+    }
+
+    // 2b. Hide the splash now that the app has mounted. The config keeps a
+    //     1200ms auto-hide as a safety net; hiding here hands off directly to
+    //     the (already dark) app background instead of racing that timer.
+    try {
+      const { SplashScreen } = await import('@capacitor/splash-screen');
+      await SplashScreen.hide();
+    } catch {
+      /* splash screen plugin not available on this platform */
     }
 
     // 3. Handle auth deep links (OAuth PKCE / email confirmation). The

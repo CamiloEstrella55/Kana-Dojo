@@ -142,6 +142,15 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang={locale} suppressHydrationWarning>
       <head>
+        {/* Anti-flash: paint the persisted theme background before hydration so
+            the native WebView never shows a white frame between the (dark)
+            splash screen and React's first paint. Falls back to the dark app
+            chrome color via CSS when nothing is cached yet. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var b=localStorage.getItem('kd-theme-bg');if(b)document.documentElement.style.setProperty('--background-color',b);}catch(e){}`,
+          }}
+        />
         <StructuredData data={kanaDojoSchema} />
         {/* DNS prefetch for external domains - resolve DNS early */}
         {isAnalyticsEnabled && (
@@ -200,4 +209,3 @@ export default async function RootLayout({ children }: RootLayoutProps) {
     </html>
   );
 }
-
