@@ -1,0 +1,97 @@
+{
+  "name": "KanaDojo - Learn Japanese Hiragana, Katakana, Kanji, Vocabulary & Translation",
+  "short_name": "KanaDojo",
+  "description": "Master Japanese with KanaDojo - learn Hiragana, Katakana, Kanji, Vocabulary with interactive games. Free Japanese to English translator with romanization. Track progress and customize your experience.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "categories": ["education", "productivity"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/wide-1.png",
+      "sizes": "1920x918",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "KanaDojo desktop view"
+    },
+    {
+      "src": "/screenshots/narrow-1.png",
+      "sizes": "792x832",
+      "type": "image/png",
+      "label": "KanaDojo mobile view"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Kana Dojo",
+      "short_name": "Kana",
+      "description": "Practice Hiragana and Katakana",
+      "url": "/kana",
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Kanji Dojo",
+      "short_name": "Kanji",
+      "description": "Practice Kanji characters",
+      "url": "/kanji",
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Vocabulary Dojo",
+      "short_name": "Vocabulary",
+      "description": "Practice Japanese vocabulary",
+      "url": "/vocabulary",
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Japanese Translator",
+      "short_name": "Translator",
+      "description": "Translate Japanese to English with romaji",
+      "url": "/translate",
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

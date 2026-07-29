@@ -1,0 +1,31 @@
+name: Merge Community PR After Checks
+
+'on':
+  workflow_run:
+    workflows: ['PR Quality Check']
+    types: [completed]
+  pull_request_target:
+    types: [labeled]
+
+permissions: {}
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: (github.event_name == 'pull_request_target' || github.event.workflow_run.conclusion == 'success') && github.repository == 'lingdojo/kana-dojo'
+    env:
+      AUTOMATION_PR_TOKEN: ${{ secrets.AUTOMATION_PR_TOKEN }}
+
+    concurrency:
+      group: community-merge-after-check-${{ github.event.pull_request.number || github.event.workflow_run.id || github.run_id }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Merge community PR
+        if: (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository) && env.AUTOMATION_PR_TOKEN != ''
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.AUTOMATION_PR_TOKEN }}
+          script: |
+            console.log('Community PR auto-merge is disabled; skipping merge step.');

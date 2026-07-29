@@ -1,0 +1,330 @@
+'use client';
+
+import { Suspense, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { ArrowLeftRight, WifiOff, Languages, Sparkles } from 'lucide-react';
+import { cn } from '@/shared/utils/utils';
+import { ActionButton } from '@/shared/ui/components/ActionButton';
+
+import useTranslatorStore from '../store/useTranslatorStore';
+import TranslatorInput from './TranslatorInput';
+import TranslatorOutput from './TranslatorOutput';
+import TranslationHistory from './TranslationHistory';
+import SEOContent from './SEOContent';
+
+interface TranslatorPageProps {
+  locale?: string;
+}
+
+const URL_AUTOTRANSLATE_CHAR_LIMIT = 300;
+
+interface TurnstileWindow extends Window {
+  turnstile?: {
+    render: (
+      container: HTMLElement,
+      options: {
+        sitekey: string;
+        callback: (token: string) => void;
+        'expired-callback': () => void;
+        'error-callback': () => void;
+      },
+    ) => string;
+    remove: (widgetId: string) => void;
+  };
+}
+
+function TurnstileVerification({
+  onVerified,
+}: {
+  onVerified: (token: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+    if (!siteKey || !containerRef.current) {
+      return;
+    }
+
+    let widgetId: string | null = null;
+    const renderWidget = () => {
+      const turnstile = (window as TurnstileWindow).turnstile;
+      if (!turnstile || !containerRef.current || widgetId) {
+        return;
+      }
+
+      widgetId = turnstile.render(containerRef.current, {
+        sitekey: siteKey,
+        callback: onVerified,
+        'expired-callback': () => onVerified(''),
+        'error-callback': () => onVerified(''),
+      });
+    };
+
+    if ((window as TurnstileWindow).turnstile) {
+      renderWidget();
+    } else {
+      const existingScript = document.querySelector(
+        'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js"]',
+      );
+      if (!existingScript) {
+        const script = document.createElement('script');
+        script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+        script.async = true;
+        script.defer = true;
+        script.onload = renderWidget;
+        document.head.appendChild(script);
+      } else {
+        existingScript.addEventListener('load', renderWidget, { once: true });
+      }
+    }
+
+    return () => {
+      if (widgetId && (window as TurnstileWindow).turnstile) {
+        (window as TurnstileWindow).turnstile?.remove(widgetId);
+      }
+    };
+  }, [onVerified]);
+
+  return (
+    <div className='flex justify-center' aria-label='Human verification'>
+      <div ref={containerRef} />
+    </div>
+  );
+}
+
+function TranslatorPageContent({ locale: _locale = 'en' }: TranslatorPageProps) {
+  const searchParams = useSearchParams();
+  const initializedFromUrl = useRef(false);
+
+  const {
+    sourceText,
+    sourceLanguage,
+    targetLanguage,
+    translatedText,
+    romanization,
+    isLoading,
+    error,
+    isOffline,
+    verificationRequired,
+    history,
+    setSourceText,
+    setSourceLanguage,
+    swapLanguages,
+    translate,
+    setVerificationToken,
+    loadHistory,
+    deleteFromHistory,
+    clearHistory,
+    restoreFromHistory,
+    initFromUrlParams,
+  } = useTranslatorStore();
+
+  // Load history on mount
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  // Handle URL parameters for sharable translations
+  useEffect(() => {
+    if (initializedFromUrl.current) return;
+
+    const text = searchParams.get('text') || searchParams.get('q');
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
+
+    if (text) {
+      const hasParams = initFromUrlParams({
+        text: text || undefined,
+        from: from || undefined,
+        to: to || undefined,
+        q: searchParams.get('q') || undefined,
+      });
+
+      if (hasParams) {
+        initializedFromUrl.current = true;
+        if (text.trim().length <= URL_AUTOTRANSLATE_CHAR_LIMIT) {
+          // Auto-translate short shared snippets only; longer URL text needs a click.
+          setTimeout(() => {
+            translate('url-prefill');
+          }, 100);
+        }
+      }
+    }
+  }, [searchParams, initFromUrlParams, translate]);
+
+  const handleTranslate = () => {
+    if (!isOffline && sourceText.trim().length > 0) translate();
+  };
+
+  const handleVerified = useCallback((token: string) => {
+    setVerificationToken(token || null);
+    if (token && !isOffline && sourceText.trim().length > 0) {
+      translate();
+    }
+  }, [isOffline, setVerificationToken, sourceText, translate]);
+
+  return (
+    <div
+      className='mx-auto flex w-full max-w-6xl flex-col gap-6'
+      role='application'
+      aria-label='Japanese to English translator'
+    >
+      {/* Header with SEO-optimized content */}
+      <header
+        className={cn(
+          'flex flex-col items-start gap-4 rounded-2xl p-4 sm:flex-row sm:items-center sm:p-6',
+          'border border-(--border-color) bg-gradient-to-r from-(--card-color) to-(--background-color)',
+        )}
+      >
+        <div
+          className={cn(
+            'rounded-xl border border-(--main-color)/20 bg-(--main-color)/10 p-2.5 sm:p-3',
+          )}
+          aria-hidden='true'
+        >
+          <Languages className='h-6 w-6 text-(--main-color) sm:h-8 sm:w-8' />
+        </div>
+        <div>
+          <h1 className='text-2xl font-bold text-(--main-color) sm:text-3xl'>
+            Japanese Translator for English to Japanese and Japanese to English
+          </h1>
+          <p className='mt-1 text-sm text-(--secondary-color) sm:text-base'>
+            Use the main translator for quick two-way translation, then jump
+            into dedicated pages for <strong>English to Japanese</strong>,{' '}
+            <strong>Japanese to English</strong>, and{' '}
+            <strong>romaji support</strong> when you need more context.
+          </p>
+        </div>
+      </header>
+
+      <section
+        className={cn(
+          'grid gap-4 rounded-xl border border-(--border-color) bg-(--card-color) p-4 md:grid-cols-2',
+        )}
+        aria-label='Translator transparency details'
+      >
+        <div>
+          <h2 className='text-base font-semibold text-(--main-color)'>
+            Limits and privacy
+          </h2>
+          <ul className='mt-2 list-disc space-y-1 pl-5 text-sm text-(--secondary-color)'>
+            <li>Up to 5,000 characters per request.</li>
+            <li>Fair-use limits apply during high demand.</li>
+            <li>History is stored locally in your browser.</li>
+          </ul>
+        </div>
+        <div>
+          <h2 className='text-base font-semibold text-(--main-color)'>
+            How to use this hub
+          </h2>
+          <p className='mt-2 text-sm text-(--secondary-color)'>
+            Start with the main translator for quick checks, then open the
+            intent page that matches your exact task.
+          </p>
+          <ul className='mt-2 list-disc space-y-1 pl-5 text-sm text-(--secondary-color)'>
+            <li>Use the hub for broad Japanese translator queries.</li>
+            <li>Use the child pages for direction-specific searches.</li>
+            <li>Cross-check important names, slang, and nuanced phrasing.</li>
+          </ul>
+        </div>
+      </section>
+
+      {/* Offline indicator */}
+      {isOffline && (
+        <div
+          className={cn(
+            'flex items-center gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-yellow-600 dark:text-yellow-400',
+          )}
+          role='alert'
+        >
+          <WifiOff className='h-5 w-5 flex-shrink-0' />
+          <span className='text-sm font-medium'>
+            You are offline. Translation is unavailable until you reconnect.
+          </span>
+        </div>
+      )}
+
+      {/* Main translation area */}
+      <div
+        className={cn(
+          'grid grid-cols-1 items-stretch gap-4 lg:grid-cols-[1fr_auto_1fr]',
+        )}
+      >
+        <TranslatorInput
+          value={sourceText}
+          onChange={setSourceText}
+          onTranslate={handleTranslate}
+          sourceLanguage={sourceLanguage}
+          onLanguageChange={setSourceLanguage}
+          isLoading={isLoading}
+          error={error}
+          isOffline={isOffline}
+        />
+        <div className='flex items-center justify-center py-2 lg:py-0 lg:pt-16'>
+          <button
+            onClick={swapLanguages}
+            disabled={isLoading || isOffline}
+            className={cn(
+              'h-12 w-12 cursor-pointer rounded-full border-2 border-(--border-color) bg-(--card-color) lg:h-14 lg:w-14',
+              'transition-all duration-200 hover:border-(--main-color) hover:bg-(--border-color) active:scale-95',
+              'flex rotate-90 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50 lg:rotate-0',
+              'focus-visible:ring-2 focus-visible:ring-(--main-color) focus-visible:ring-offset-2',
+            )}
+            aria-label='Swap languages'
+          >
+            <ArrowLeftRight className='h-5 w-5 text-(--main-color)' />
+          </button>
+        </div>
+        <TranslatorOutput
+          translation={translatedText}
+          romanization={romanization}
+          sourceText={sourceText}
+          sourceLanguage={sourceLanguage}
+          targetLanguage={targetLanguage}
+          isLoading={isLoading}
+        />
+      </div>
+
+      {/* Translate button */}
+      <div className='flex h-[54px] items-start justify-center px-4 sm:h-[62px] sm:px-0'>
+        <ActionButton
+          onClick={handleTranslate}
+          disabled={isLoading || isOffline || sourceText.trim().length === 0}
+          gradient
+          borderRadius='2xl'
+          borderBottomThickness={6}
+          className={cn(
+            'h-12 w-full text-base font-semibold disabled:cursor-not-allowed disabled:opacity-50 sm:h-14 sm:w-auto sm:min-w-[240px] sm:text-lg',
+          )}
+        >
+          <Sparkles className='h-5 w-5' />
+          {isLoading ? 'Translating...' : 'Translate'}
+        </ActionButton>
+      </div>
+
+      {verificationRequired && process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+        <TurnstileVerification onVerified={handleVerified} />
+      )}
+
+      <div className='mt-6'>
+        <TranslationHistory
+          entries={history}
+          onSelect={restoreFromHistory}
+          onDelete={deleteFromHistory}
+          onClearAll={clearHistory}
+        />
+      </div>
+      <SEOContent />
+    </div>
+  );
+}
+
+export default function TranslatorPage(props: TranslatorPageProps) {
+  return (
+    <Suspense fallback={null}>
+      <TranslatorPageContent {...props} />
+    </Suspense>
+  );
+}
+

@@ -1,0 +1,488 @@
+'use client';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import clsx from 'clsx';
+import { motion } from 'framer-motion';
+import { toHiragana } from 'wanakana';
+import { IVocabObj } from '@/features/Vocabulary/store/useVocabStore';
+import {
+  useClick,
+  useCorrect,
+  useError,
+} from '@/shared/hooks/generic/useAudio';
+import {
+  useGameStats,
+  useStatsDisplay,
+  useStatsStore,
+} from '@/features/Progress';
+import Stars from '@/shared/ui-composite/Game/Stars';
+import AnswerSummary from '@/shared/ui-composite/Game/AnswerSummary';
+import SSRAudioButton from '@/shared/ui-composite/audio/SSRAudioButton';
+import FuriganaText from '@/shared/ui-composite/text/FuriganaText';
+import { useCrazyModeTrigger } from '@/features/CrazyMode/hooks/useCrazyModeTrigger';
+import { getGlobalAdaptiveSelector } from '@/shared/utils/adaptiveSelection';
+import { GameBottomBar } from '@/shared/ui-composite/Game/GameBottomBar';
+import useClassicSessionStore from '@/shared/store/useClassicSessionStore';
+import { useThemePreferences } from '@/features/Preferences';
+import { cn } from '@/shared/utils/utils';
+import {
+  formatKeyToQuizType,
+  getAvailableQuestionFormats,
+  getQuestionFormatKey,
+  type VocabQuestionFormat,
+  type VocabQuizType,
+} from '@/features/Vocabulary/components/Game/vocabFormatLock';
+import { useSetProgressStore } from '@/features/Progress';
+import { shouldSuppressContinueKeyboardShortcut } from '@/shared/utils/game/continueShortcutGuard';
+import { isVocabularyMeaningAnswerCorrect } from '@/features/Vocabulary/lib/isVocabularyMeaningAnswerCorrect';
+
+// Get the global adaptive selector for weighted character selection
+const adaptiveSelector = getGlobalAdaptiveSelector();
+
+// Bottom bar states
+type BottomBarState = 'check' | 'correct' | 'wrong';
+
+interface VocabInputGameProps {
+  selectedWordObjs: IVocabObj[];
+  isHidden: boolean;
+  isReverse?: boolean;
+}
+
+const VocabInputGame = ({
+  selectedWordObjs,
+  isHidden,
+  isReverse = false,
+}: VocabInputGameProps) => {
+  const logAttempt = useClassicSessionStore(state => state.logAttempt);
+  const recordVocabularyProgress = useSetProgressStore(
+    state => state.recordVocabularyProgress,
+  );
+  const { setScore } = useStatsDisplay();
+  const gameStats = useGameStats();
+
+  const isGlassMode = useThemePreferences().isGlassMode;
+
+  const answerStartTimeRef = useRef<number | null>(null);
+  const elapsedTimeMsRef = useRef(0);
+
+  const { playClick } = useClick();
+  const { playCorrect } = useCorrect();
+  const { playErrorTwice } = useError();
+  const { trigger: triggerCrazyMode } = useCrazyModeTrigger();
+
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const justAnsweredRef = useRef(false);
+
+  const [inputValue, setInputValue] = useState('');
+  const [bottomBarState, setBottomBarState] = useState<BottomBarState>('check');
+  const [clearWrongFeedbackSignal, setClearWrongFeedbackSignal] = useState(0);
+  const [wrongFeedbackSignal, setWrongFeedbackSignal] = useState(0);
+
+  // Quiz type: 'meaning' or 'reading'
+  const [quizType, setQuizType] = useState<'meaning' | 'reading'>('meaning');
+
+  // State management uses word-level adaptive keys in both normal and reverse mode.
+  const [correctChar, setCorrectChar] = useState(() => {
+    if (selectedWordObjs.length === 0) return '';
+    const sourceArray = selectedWordObjs.map(obj => obj.word);
+    const selected = adaptiveSelector.selectWeightedCharacter(sourceArray);
+    adaptiveSelector.markCharacterSeen(selected);
+    return selected;
+  });
+
+  const correctWordObj = selectedWordObjs.find(obj => obj.word === correctChar);
+
+  const [currentWordObj, setCurrentWordObj] = useState<IVocabObj>(
+    correctWordObj as IVocabObj,
+  );
+
+  // Determine target based on quiz type and mode
+  const targetChar =
+    quizType === 'meaning'
+      ? isReverse
+        ? correctWordObj?.word
+        : correctWordObj?.meanings
+      : correctWordObj?.reading;
+  const questionPrompt =
+    quizType === 'meaning' && isReverse
+      ? (correctWordObj?.meanings[0] ?? '')
+      : correctChar;
+
+  const [displayAnswerSummary, setDisplayAnswerSummary] = useState(false);
+  const [promptSequence, setPromptSequence] = useState(0);
+  const pauseTimer = useCallback(() => {
+    if (answerStartTimeRef.current !== null) {
+      elapsedTimeMsRef.current +=
+        performance.now() - answerStartTimeRef.current;
+      answerStartTimeRef.current = null;
+    }
+  }, []);
+  const getElapsedTimeMs = useCallback(() => {
+    if (answerStartTimeRef.current !== null) {
+      return (
+        elapsedTimeMsRef.current +
+        (performance.now() - answerStartTimeRef.current)
+      );
+    }
+    return elapsedTimeMsRef.current;
+  }, []);
+  const resetTimer = useCallback(() => {
+    answerStartTimeRef.current = null;
+    elapsedTimeMsRef.current = 0;
+  }, []);
+  const startTimer = useCallback(() => {
+    answerStartTimeRef.current = performance.now();
+    elapsedTimeMsRef.current = 0;
+  }, []);
+
+  // Generate new character - defined before useCallback that uses it
+  const generateNewCharacter = useCallback(() => {
+    const sourceArray = selectedWordObjs.map(obj => obj.word);
+
+    const newChar = adaptiveSelector.selectWeightedCharacter(
+      sourceArray,
+      correctChar,
+    );
+    adaptiveSelector.markCharacterSeen(newChar);
+    setCorrectChar(newChar);
+
+    const baseQuizType: VocabQuizType =
+      /[\u4E00-\u9FAF]/.test(newChar) && quizType === 'meaning'
+        ? 'reading'
+        : 'meaning';
+    const lockedFormat = adaptiveSelector.getPreferredLockedFormat(
+      newChar,
+      getAvailableQuestionFormats(newChar, isReverse),
+    );
+    setQuizType(
+      lockedFormat
+        ? formatKeyToQuizType(lockedFormat as VocabQuestionFormat)
+        : baseQuizType,
+    );
+  }, [isReverse, selectedWordObjs, correctChar, quizType]);
+
+  const handleContinue = useCallback(() => {
+    playClick();
+    setInputValue('');
+    setDisplayAnswerSummary(false);
+    generateNewCharacter();
+    setPromptSequence(prev => prev + 1);
+    setBottomBarState('check');
+    startTimer();
+  }, [playClick, generateNewCharacter, startTimer]);
+
+  useEffect(() => {
+    if (inputRef.current && bottomBarState === 'check') {
+      inputRef.current.focus();
+    }
+  }, [bottomBarState]);
+
+  // Keyboard shortcut for Enter/Space to trigger button
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isEnter = event.key === 'Enter';
+      const isSpace = event.code === 'Space' || event.key === ' ';
+      const isContinueShortcut = isEnter || isSpace;
+
+      if (isContinueShortcut && shouldSuppressContinueKeyboardShortcut()) {
+        event.preventDefault();
+        return;
+      }
+
+      if (isEnter) {
+        if (justAnsweredRef.current) {
+          event.preventDefault();
+          return;
+        }
+        // Allow Enter to trigger Next button when correct
+        if (bottomBarState === 'correct') {
+          event.preventDefault();
+          buttonRef.current?.click();
+        }
+      } else if (isSpace) {
+        // Only trigger button for continue state.
+        if (bottomBarState === 'correct') {
+          event.preventDefault();
+          buttonRef.current?.click();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [bottomBarState]);
+
+  useEffect(() => {
+    if (isHidden) pauseTimer();
+  }, [isHidden, pauseTimer]);
+
+  if (!selectedWordObjs || selectedWordObjs.length === 0) {
+    return null;
+  }
+
+  const isInputCorrect = (input: string): boolean => {
+    if (quizType === 'meaning') {
+      return correctWordObj
+        ? isVocabularyMeaningAnswerCorrect(correctWordObj, input, isReverse)
+        : false;
+    } else {
+      const targetReading = typeof targetChar === 'string' ? targetChar : '';
+      const inputAsHiragana = toHiragana(input);
+      const targetAsHiragana = toHiragana(targetReading);
+      return inputAsHiragana === targetAsHiragana || input === targetReading;
+    }
+  };
+
+  const handleCheck = () => {
+    if (inputValue.trim().length === 0) return;
+    const trimmedInput = inputValue.trim();
+
+    playClick();
+
+    if (isInputCorrect(trimmedInput)) {
+      handleCorrectAnswer();
+    } else {
+      handleWrongAnswer();
+    }
+  };
+
+  const handleCorrectAnswer = () => {
+    pauseTimer();
+    const answerTimeMs = getElapsedTimeMs();
+    resetTimer();
+    setCurrentWordObj(correctWordObj as IVocabObj);
+
+    playCorrect();
+    gameStats.recordCorrect('vocabulary', correctChar, {
+      timeTaken: answerTimeMs,
+    });
+    void recordVocabularyProgress(correctChar, quizType);
+    setScore(useStatsStore.getState().score + 1);
+
+    triggerCrazyMode();
+    adaptiveSelector.updateCharacterWeight(correctChar, true);
+    adaptiveSelector.registerQuestionFormatResult(
+      correctChar,
+      getQuestionFormatKey(quizType, isReverse),
+      true,
+    );
+    setBottomBarState('correct');
+    justAnsweredRef.current = true;
+    setTimeout(() => {
+      justAnsweredRef.current = false;
+    }, 300);
+    setDisplayAnswerSummary(true);
+    logAttempt({
+      questionId: correctChar,
+      questionPrompt,
+      expectedAnswers: Array.isArray(targetChar)
+        ? targetChar.map(v => String(v))
+        : [String(targetChar)],
+      userAnswer: inputValue.trim(),
+      inputKind: 'type',
+      isCorrect: true,
+      timeTakenMs: answerTimeMs,
+      extra: {
+        contentType: 'vocabulary',
+        canonicalItemKey: correctChar,
+        questionType: quizType,
+        isReverse,
+        quizType,
+      },
+    });
+  };
+
+  const handleWrongAnswer = () => {
+    setInputValue('');
+    setWrongFeedbackSignal(prev => prev + 1);
+    playErrorTwice();
+
+    const correctAnswer = Array.isArray(targetChar)
+      ? targetChar[0]
+      : (targetChar ?? '');
+    gameStats.recordIncorrect(
+      'vocabulary',
+      correctChar,
+      inputValue.trim(),
+      correctAnswer,
+    );
+    const nextScore = useStatsStore.getState().score - 1;
+    if (nextScore < 0) {
+      setScore(0);
+    } else {
+      setScore(nextScore);
+    }
+    triggerCrazyMode();
+    adaptiveSelector.updateCharacterWeight(correctChar, false);
+    adaptiveSelector.registerQuestionFormatResult(
+      correctChar,
+      getQuestionFormatKey(quizType, isReverse),
+      false,
+    );
+    setBottomBarState('wrong');
+    logAttempt({
+      questionId: correctChar,
+      questionPrompt,
+      expectedAnswers: Array.isArray(targetChar)
+        ? targetChar.map(v => String(v))
+        : [String(targetChar)],
+      userAnswer: inputValue.trim(),
+      inputKind: 'type',
+      isCorrect: false,
+      extra: {
+        contentType: 'vocabulary',
+        canonicalItemKey: correctChar,
+        questionType: quizType,
+        isReverse,
+        quizType,
+      },
+    });
+  };
+
+  const handleEnter = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (
+      e.key === 'Enter' &&
+      inputValue.trim().length &&
+      bottomBarState !== 'correct'
+    ) {
+      handleCheck();
+    }
+  };
+
+  const displayCharLang = isReverse && quizType === 'meaning' ? 'en' : 'ja';
+  const inputLang = quizType === 'reading' ? 'ja' : isReverse ? 'ja' : 'en';
+  const textSize = isReverse ? 'text-5xl sm:text-7xl' : 'text-5xl md:text-8xl';
+  const canCheck = inputValue.trim().length > 0 && bottomBarState !== 'correct';
+  const showContinue = bottomBarState === 'correct';
+  const clearWrongFeedback = () => {
+    if (bottomBarState === 'wrong') {
+      setClearWrongFeedbackSignal(prev => prev + 1);
+    }
+  };
+
+  // For Bottom Bar feedback
+  const feedbackText = isReverse
+    ? targetChar
+    : Array.isArray(targetChar)
+      ? targetChar[0]
+      : targetChar;
+
+  return (
+    <div
+      className={clsx(
+        'flex w-full flex-col items-center gap-10 sm:w-4/5',
+        isHidden ? 'hidden' : '',
+      )}
+    >
+      {displayAnswerSummary ? (
+        <AnswerSummary
+          payload={currentWordObj}
+          setDisplayAnswerSummary={setDisplayAnswerSummary}
+          feedback={<></>}
+          isEmbedded={true}
+        />
+      ) : (
+        <>
+          <div className='flex flex-col items-center gap-4'>
+            <span className='mb-2 text-sm text-(--secondary-color)'>
+              {quizType === 'meaning'
+                ? isReverse
+                  ? 'What is the word?'
+                  : 'What is the meaning?'
+                : 'What is the reading?'}
+            </span>
+            <div
+              className={cn(
+                'flex flex-row items-center gap-1',
+                isGlassMode && 'rounded-xl bg-(--card-color) px-4 py-2',
+              )}
+            >
+              <motion.div
+                initial={{ opacity: 0, x: 30, scale: 0.95 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 150,
+                  damping: 20,
+                  mass: 1,
+                  duration: 0.5,
+                }}
+                key={correctChar + quizType}
+                className='flex flex-row items-center gap-1'
+              >
+                <FuriganaText
+                  text={questionPrompt}
+                  reading={
+                    !isReverse && quizType === 'meaning'
+                      ? correctWordObj?.reading
+                      : undefined
+                  }
+                  className={clsx(textSize, 'text-center')}
+                  lang={displayCharLang}
+                />
+                {!isReverse && (
+                  <SSRAudioButton
+                    text={correctChar}
+                    variant='icon-only'
+                    size='sm'
+                    className='bg-(--card-color) text-(--secondary-color)'
+                    autoPlay
+                    autoPlayTrigger={promptSequence}
+                  />
+                )}
+              </motion.div>
+            </div>
+          </div>
+
+          <textarea
+            ref={inputRef}
+            value={inputValue}
+            placeholder='type your answer...'
+            disabled={showContinue}
+            rows={4}
+            className={clsx(
+              'w-full max-w-xs sm:max-w-sm md:max-w-md',
+              'rounded-3xl px-5 py-4',
+              'border-4 border-(--border-color) bg-(--card-color)',
+              'text-top text-left text-lg font-medium lg:text-xl',
+              'text-(--secondary-color) placeholder:text-base placeholder:font-normal placeholder:text-(--secondary-color)/40',
+              'game-input resize-none focus:border-(--secondary-color)/70 focus:text-(--main-color) focus:outline-none',
+              'transition-colors duration-200 ease-out',
+              showContinue && 'cursor-not-allowed opacity-60',
+            )}
+            autoFocus
+            onChange={e => {
+              setInputValue(e.target.value);
+              clearWrongFeedback();
+            }}
+            onFocus={clearWrongFeedback}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleEnter(e);
+              }
+            }}
+            lang={inputLang}
+          />
+        </>
+      )}
+
+      <Stars />
+
+      <GameBottomBar
+        state={bottomBarState}
+        onAction={showContinue ? handleContinue : handleCheck}
+        canCheck={canCheck}
+        feedbackContent={feedbackText}
+        buttonRef={buttonRef}
+        hideRetry
+        clearWrongFeedbackSignal={clearWrongFeedbackSignal}
+        wrongFeedbackSignal={wrongFeedbackSignal}
+      />
+
+      <div className='h-32' />
+    </div>
+  );
+};
+
+export default VocabInputGame;

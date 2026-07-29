@@ -1,0 +1,74 @@
+'use client';
+
+import React from 'react';
+import useKanaStore from '@/features/Kana/store/useKanaStore';
+import { generateKanaQuestion } from '@/features/Kana/lib/generateKanaQuestions';
+import { flattenKanaGroups } from '@/features/Kana/lib/flattenKanaGroup';
+import type { KanaCharacter } from '@/features/Kana/lib/flattenKanaGroup';
+import { isKanaGameAnswerCorrect } from '@/features/Kana/lib/isKanaGameAnswerCorrect';
+import { getSelectionLabels } from '@/shared/utils/selectionFormatting';
+import { shuffle } from '@/shared/utils/shuffle';
+import Gauntlet, { type GauntletConfig } from '@/shared/ui-composite/Gauntlet';
+import { getUniqueIncorrectOptions } from '@/features/Kana/lib/getUniqueIncorrectOptions';
+
+interface GauntletKanaProps {
+  onCancel?: () => void;
+}
+
+const GauntletKana: React.FC<GauntletKanaProps> = ({ onCancel }) => {
+  const kanaGroupIndices = useKanaStore(state => state.kanaGroupIndices);
+  const selectedGameModeKana = useKanaStore(
+    state => state.selectedGameModeKana,
+  );
+
+  const selectedKana = React.useMemo(
+    () => flattenKanaGroups(kanaGroupIndices),
+    [kanaGroupIndices],
+  );
+
+  // Convert indices to group names for display
+  const selectedKanaGroups = React.useMemo(
+    () => getSelectionLabels('kana', kanaGroupIndices).full.split(', '),
+    [kanaGroupIndices],
+  );
+
+  const config: GauntletConfig<KanaCharacter> = {
+    dojoType: 'kana',
+    dojoLabel: 'Kana',
+    initialGameMode: selectedGameModeKana === 'Type' ? 'Type' : 'Pick',
+    items: selectedKana,
+    selectedSets: selectedKanaGroups,
+    generateQuestion: items => generateKanaQuestion(items),
+    renderQuestion: (question, isReverse) =>
+      isReverse ? question.romaji : question.kana,
+    checkAnswer: (question, answer, isReverse) =>
+      isKanaGameAnswerCorrect(question, answer, isReverse),
+    getCorrectAnswer: (question, isReverse) =>
+      isReverse ? question.kana : question.romaji,
+    generateOptions: (question, items, count, isReverse) => {
+      if (isReverse) {
+        const correctAnswer = question.kana;
+        const incorrectOptions = getUniqueIncorrectOptions(
+          correctAnswer,
+          shuffle(items).map(item => item.kana),
+          count - 1,
+        );
+        return [correctAnswer, ...incorrectOptions];
+      }
+      const correctAnswer = question.romaji;
+      const incorrectOptions = getUniqueIncorrectOptions(
+        correctAnswer,
+        shuffle(items).map(item => item.romaji),
+        count - 1,
+      );
+      return [correctAnswer, ...incorrectOptions];
+    },
+    getCorrectOption: (question, isReverse) =>
+      isReverse ? question.kana : question.romaji,
+    supportsReverseMode: true,
+  };
+
+  return <Gauntlet config={config} onCancel={onCancel} />;
+};
+
+export default GauntletKana;

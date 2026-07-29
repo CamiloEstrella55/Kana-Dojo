@@ -1,0 +1,274 @@
+import { withSentryConfig } from '@sentry/nextjs';
+import type { NextConfig } from 'next';
+import createNextIntlPlugin from 'next-intl/plugin';
+import bundleAnalyzer from '@next/bundle-analyzer';
+
+const withNextIntl = createNextIntlPlugin('./core/i18n/request.ts');
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+});
+
+const isDev = process.env.NODE_ENV !== 'production';
+
+const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+const posthogServerHost =
+  process.env.POSTHOG_HOST ?? process.env.NEXT_PUBLIC_POSTHOG_HOST;
+const cspConnectSrc = [
+  "'self'",
+  'https://www.googletagmanager.com',
+  'https://www.google-analytics.com',
+  'https://www.clarity.ms',
+  'https://vercel-analytics.com',
+  'https://vitals.vercel-insights.com',
+  'https://translation.googleapis.com',
+  'https://challenges.cloudflare.com',
+];
+
+if (posthogHost) {
+  cspConnectSrc.push(posthogHost);
+}
+if (posthogServerHost && posthogServerHost !== posthogHost) {
+  cspConnectSrc.push(posthogServerHost);
+}
+
+// Supabase realtime uses secure WebSockets (wss:), which are not covered by an
+// `https:` connect-src source. Allow the project's origin over both https + wss.
+const supabasePublicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseConnectSrc: string[] = [];
+if (supabasePublicUrl) {
+  try {
+    const { host } = new URL(supabasePublicUrl);
+    supabaseConnectSrc.push(`https://${host}`, `wss://${host}`);
+    cspConnectSrc.push(`https://${host}`, `wss://${host}`);
+  } catch {
+    // Ignore malformed URL; sync will surface a clearer error at runtime.
+  }
+}
+
+const enforcedConnectSrc = ["'self'", 'https:', ...supabaseConnectSrc].join(
+  ' ',
+);
+
+const cspEnforced =
+  `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https: https://assets.kanadojo.com; font-src 'self' data: https:; connect-src ${enforcedConnectSrc}; frame-src 'self' https:; object-src 'none'; base-uri 'self';`;
+
+const cspReportOnly = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://www.clarity.ms https://challenges.cloudflare.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "img-src 'self' data: blob: https: https://assets.kanadojo.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  `connect-src ${cspConnectSrc.join(' ')}`,
+  "frame-src 'self' https://www.googletagmanager.com https://challenges.cloudflare.com",
+  "object-src 'none'",
+  "base-uri 'self'",
+].join('; ');
+
+const nextConfig: NextConfig = {
+  // Performance optimizations
+  reactStrictMode: true,
+  compress: false, // Let Vercel handle compression
+  poweredByHeader: false, // Remove X-Powered-By header for security
+  generateEtags: true, // Generate ETags for better caching
+
+  // Disable instrumentation in development
+  // instrumentationHook: !isDev,
+
+  // Compiler optimizations
+  compiler: {
+    removeConsole: !isDev ? { exclude: ['error', 'warn'] } : false,
+  },
+
+  // Experimental features for better performance
+  experimental: {
+    // Faster builds
+    // webpackBuildWorker: true
+  },
+
+  // Turbopack configuration (moved from experimental.turbo in Next.js 15)
+  turbopack: {
+    // Resolve aliases for faster module resolution
+    resolveAlias: {
+      '@/entities': './entities',
+      '@/features': './features',
+      '@/core': './core',
+      '@/shared': './shared',
+      '@/widgets': './widgets',
+    },
+  },
+
+  // Reduce overhead in development
+  devIndicators: false,
+
+  // Optimize images
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    minimumCacheTTL: 31536000, // 1 year cache for optimized images
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'avatars.githubusercontent.com',
+        pathname: '/u/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'assets.kanadojo.com',
+        pathname: '/wallpapers/**',
+      },
+    ],
+  },
+
+  // Skip type checking during dev (run separately with `npm run check`)
+  typescript: {
+    ignoreBuildErrors: isDev,
+  },
+
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...(config.resolve.fallback ?? {}),
+        fs: false,
+        path: false,
+      };
+    }
+    return config;
+  },
+
+  // Cache headers for static assets - reduces data transfer and edge requests
+  async headers() {
+    return [
+      {
+        // Security headers for all routes (enhances Bing trust signals)
+        source: '/:path*',
+        headers: [
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'interest-cohort=()',
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: cspEnforced,
+          },
+          {
+            key: 'Content-Security-Policy-Report-Only',
+            value: cspReportOnly,
+          },
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin-allow-popups',
+          },
+          {
+            key: 'Cross-Origin-Resource-Policy',
+            value: 'same-site',
+          },
+          {
+            key: 'Origin-Agent-Cluster',
+            value: '?1',
+          },
+        ],
+      },
+      {
+        // Audio files - immutable, cache forever
+        source: '/sounds/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        // Kanji JSON data files - cache for 1 week
+        source: '/data-kanji/:path*.json',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=604800, stale-while-revalidate=86400',
+          },
+        ],
+      },
+      {
+        // Vocab JSON data files - cache for 1 week
+        source: '/data-vocab/:path*.json',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=604800, stale-while-revalidate=86400',
+          },
+        ],
+      },
+      {
+        // Japan facts API - cache for 1 week
+        source: '/api/facts',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=604800, stale-while-revalidate=86400',
+          },
+        ],
+      },
+      {
+        // Manifest and other static files
+        source: '/manifest.json',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=3600',
+          },
+        ],
+      },
+    ];
+  },
+};
+
+export default withSentryConfig(withBundleAnalyzer(withNextIntl(nextConfig)), {
+  // For all available options, see:
+  // https://www.npmjs.com/package/@sentry/webpack-plugin#options
+
+  org: "zephyr-software",
+
+  project: "javascript-nextjs",
+
+  // Only print logs for uploading source maps in CI
+  silent: !process.env.CI,
+
+  // For all available options, see:
+  // https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
+
+  // Upload a larger set of source maps for prettier stack traces (increases build time)
+  widenClientFileUpload: true,
+
+  // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
+  // This can increase your server load as well as your hosting bill.
+  // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
+  // side errors will fail.
+  tunnelRoute: "/monitoring",
+
+  webpack: {
+    // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
+    // See the following for more information:
+    // https://docs.sentry.io/product/crons/
+    // https://vercel.com/docs/cron-jobs
+    automaticVercelMonitors: true,
+
+    // Tree-shaking options for reducing bundle size
+    treeshake: {
+      // Automatically tree-shake Sentry logger statements to reduce bundle size
+      removeDebugLogging: true,
+    },
+  },
+});

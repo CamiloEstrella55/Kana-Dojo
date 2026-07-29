@@ -1,0 +1,84 @@
+name: iOS Unsigned IPA
+
+# Builds an UNSIGNED .ipa of the KanaDojo Capacitor app and uploads it as a
+# build artifact. Unsigned IPAs cannot be installed on stock devices directly —
+# they are meant for signing later (e.g. with your own certificate, AltStore,
+# Sideloadly) or for inspection. Signing requires an Apple Developer account.
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generate commit info
+        run: node scripts/generate-commit-info.mjs
+
+      - name: Capacitor sync (iOS)
+        run: npx cap sync ios
+        env:
+          # Point the shell at your deployment so the built app carries the
+          # Phase 1 auth + sync. Set this repo/actions secret to override.
+          CAP_SERVER_URL: ${{ vars.CAP_SERVER_URL || 'https://kanadojo.com' }}
+
+      - name: Archive (unsigned)
+        working-directory: ios/App
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -skipPackagePluginValidation \
+            clean archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            DEVELOPMENT_TEAM=""
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "App.app not found in archive" >&2
+            exit 1
+          fi
+          WORK="$RUNNER_TEMP/ipa"
+          mkdir -p "$WORK/Payload"
+          cp -R "$APP_PATH" "$WORK/Payload/App.app"
+          (cd "$WORK" && zip -qry "$RUNNER_TEMP/KanaDojo-unsigned.ipa" Payload)
+          echo "Built: $RUNNER_TEMP/KanaDojo-unsigned.ipa"
+          ls -lh "$RUNNER_TEMP/KanaDojo-unsigned.ipa"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KanaDojo-unsigned-ipa
+          path: ${{ runner.temp }}/KanaDojo-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30

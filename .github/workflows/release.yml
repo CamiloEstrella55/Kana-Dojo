@@ -1,0 +1,33 @@
+name: Create GitHub Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - features/PatchNotes/patchNotesData.json
+      - .github/scripts/create-release.cjs
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+      - name: Create GitHub Release
+        run: node .github/scripts/create-release.cjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

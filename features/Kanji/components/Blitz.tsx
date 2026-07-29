@@ -1,0 +1,89 @@
+'use client';
+
+import React from 'react';
+import useKanjiStore, {
+  type IKanjiObj,
+} from '@/features/Kanji/store/useKanjiStore';
+import { useStatsStore } from '@/features/Progress';
+import Blitz, { type BlitzConfig } from '@/shared/ui-composite/Blitz';
+import { getSelectionLabels } from '@/shared/utils/selectionFormatting';
+import { shuffle, pickOne } from '@/shared/utils/shuffle';
+import { isKanjiAnswerCorrect } from '@/features/Kanji/lib/isKanjiAnswerCorrect';
+
+export default function BlitzKanji() {
+  const selectedKanjiObjs = useKanjiStore(state => state.selectedKanjiObjs);
+  const selectedKanjiSets = useKanjiStore(state => state.selectedKanjiSets);
+  const selectedGameModeKanji = useKanjiStore(
+    state => state.selectedGameModeKanji,
+  );
+
+  const {
+    timedKanjiCorrectAnswers,
+    timedKanjiWrongAnswers,
+    timedKanjiStreak,
+    timedKanjiBestStreak,
+    incrementTimedKanjiCorrectAnswers,
+    incrementTimedKanjiWrongAnswers,
+    resetTimedKanjiStats,
+  } = useStatsStore();
+
+  const formattedSets = React.useMemo(() => {
+    return getSelectionLabels('kanji', selectedKanjiSets).full.split(', ');
+  }, [selectedKanjiSets]);
+
+  const config: BlitzConfig<IKanjiObj> = {
+    dojoType: 'kanji',
+    dojoLabel: 'Kanji',
+    localStorageKey: 'blitzKanjiDuration',
+    goalTimerContext: 'Kanji Blitz',
+    initialGameMode: selectedGameModeKanji === 'Type' ? 'Type' : 'Pick',
+    items: selectedKanjiObjs,
+    selectedSets: formattedSets,
+    generateQuestion: items => pickOne(items)!,
+    // Reverse mode: show meaning, answer is kanji
+    // Normal mode: show kanji, answer is meaning
+    renderQuestion: (question, isReverse) =>
+      isReverse ? question.meanings[0] : question.kanjiChar,
+    inputPlaceholder: 'Type the meaning...',
+    modeDescription: 'Mode: Type (See kanji → Type meaning)',
+    checkAnswer: (question, answer, isReverse) =>
+      isKanjiAnswerCorrect(question, answer, isReverse),
+    getCorrectAnswer: (question, isReverse) =>
+      isReverse ? question.kanjiChar : question.meanings[0],
+    // Pick mode support with reverse mode
+    generateOptions: (question, items, count, isReverse) => {
+      if (isReverse) {
+        // Reverse: options are kanji characters
+        const correctAnswer = question.kanjiChar;
+        const incorrectOptions = shuffle(
+          items.filter(item => item.kanjiChar !== question.kanjiChar),
+        )
+          .slice(0, count - 1)
+          .map(item => item.kanjiChar);
+        return [correctAnswer, ...incorrectOptions];
+      }
+      // Normal: options are meanings
+      const correctAnswer = question.meanings[0];
+      const incorrectOptions = shuffle(
+        items.filter(item => item.kanjiChar !== question.kanjiChar),
+      )
+        .slice(0, count - 1)
+        .map(item => item.meanings[0]);
+      return [correctAnswer, ...incorrectOptions];
+    },
+    getCorrectOption: (question, isReverse) =>
+      isReverse ? question.kanjiChar : question.meanings[0],
+    supportsReverseMode: true,
+    stats: {
+      correct: timedKanjiCorrectAnswers,
+      wrong: timedKanjiWrongAnswers,
+      streak: timedKanjiStreak,
+      bestStreak: timedKanjiBestStreak,
+      incrementCorrect: incrementTimedKanjiCorrectAnswers,
+      incrementWrong: incrementTimedKanjiWrongAnswers,
+      reset: resetTimedKanjiStats,
+    },
+  };
+
+  return <Blitz config={config} />;
+}

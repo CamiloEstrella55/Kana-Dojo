@@ -1,0 +1,386 @@
+'use client';
+import { Fragment, lazy, Suspense, useState, useEffect } from 'react';
+import { Link } from '@/core/i18n/routing';
+import KanaDojoBanner from './KanaDojoBanner';
+import Info from '@/shared/ui-composite/Menu/Info';
+import NightlyBanner from '@/shared/ui-composite/Modals/NightlyBanner';
+import {
+  ScrollText,
+  FileLock2,
+  Cookie,
+  Sun,
+  Moon,
+  Heart,
+  Sparkle,
+  FileDiff,
+  CircleHelp,
+  Bug,
+} from 'lucide-react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faDiscord, faGithub } from '@fortawesome/free-brands-svg-icons';
+import clsx from 'clsx';
+import { useClick } from '@/shared/hooks/generic/useAudio';
+import { useThemePreferences } from '@/features/Preferences';
+import useDecorationsStore from '@/shared/store/useDecorationsStore';
+import { useMediaQuery } from 'react-responsive';
+
+const Decorations = lazy(() => import('@/shared/ui-composite/Decorations/Decorations'));
+
+const USE_NEW_DESIGN = false;
+
+const MainMenu = () => {
+  const [isMounted, setIsMounted] = useState(false);
+  const isLG = useMediaQuery({ minWidth: 1024 });
+
+  const { theme, setTheme, isGlassMode } = useThemePreferences();
+
+  const characterTileClassName = (delay?: string, floatDistance?: string) =>
+    clsx(
+      'inline-flex h-12 w-12 items-center justify-center rounded-2xl',
+      'bg-(--secondary-color) group-hover:bg-(--main-color) text-(--background-color)',
+      'border-b-8 border-(--secondary-color-accent) group-hover:border-(--main-color-accent)',
+      'transition-all duration-200',
+      'active:border-b-0 active:translate-y-[6px] active:mb-[6px]',
+      'motion-safe:animate-float',
+      delay,
+      // `[--float-distance:${floatDistance}]`,
+      `[--float-distance:-4px]`,
+    );
+
+  const { playClick } = useClick();
+
+  const expandDecorations = useDecorationsStore(
+    state => state.expandDecorations,
+  );
+  const toggleExpandDecorations = useDecorationsStore(
+    state => state.toggleExpandDecorations,
+  );
+
+  const [showBanner, setShowBanner] = useState(false);
+
+  useEffect(() => {
+    // 1. Check if the user has already dismissed the banner
+    const hasDismissed = localStorage.getItem('nightly_banner_dismissed');
+
+    // Only show if they haven't dismissed it yet
+    if (!hasDismissed) {
+      setShowBanner(true);
+    }
+  }, []);
+
+  const handleDismiss = () => {
+    localStorage.setItem('nightly_banner_dismissed', 'true');
+  };
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  const links = [
+    {
+      name_en: 'Kana',
+      name_ja: 'あ',
+      href: '/kana',
+    },
+    {
+      name_en: 'Vocab',
+      name_ja: '語',
+      href: '/vocabulary',
+    },
+    {
+      name_en: 'Kanji',
+      name_ja: '字',
+      href: '/kanji',
+    },
+
+    // {
+    //   name_en: 'Sentences',
+    //   name_ja: 'цЦЗ',
+    //   href: '/sentences'
+    // }
+  ];
+
+  const legalLinks = [
+    { name: 'terms', href: '/terms', icon: ScrollText },
+    { name: 'privacy', href: '/privacy', icon: Cookie },
+    { name: 'security', href: '/security', icon: FileLock2 },
+    { name: 'patch notes', href: '/patch-notes', icon: FileDiff },
+    { name: 'credits', href: '/credits', icon: Sparkle },
+    { name: 'about', href: '/about', icon: CircleHelp },
+  ];
+
+  const mobileLabelInset = 'pl-[max(30%,calc(50%-5.5rem))]';
+
+  return (
+    <div
+      className={clsx(
+        'flex min-h-[100dvh] max-w-[100dvw] flex-row justify-center',
+      )}
+    >
+      {isMounted && isLG && (
+        <Suspense fallback={<></>}>
+          {!isGlassMode && (
+            <Decorations
+              expandDecorations={expandDecorations}
+              forceShow={true}
+              interactive={true}
+            />
+          )}
+          <button
+            className={clsx(
+              'fixed top-4 right-4 z-50 hover:cursor-pointer',
+              'inline-flex h-12 w-12 items-center justify-center rounded-2xl',
+              'bg-(--main-color) text-(--background-color)',
+              'border-b-8 border-(--main-color-accent)',
+              'transition-all duration-200',
+              'active:mb-[6px] active:translate-y-[6px] active:border-b-0',
+              'motion-safe:animate-float [--float-distance:-3px]',
+              '[animation-delay:400ms]',
+              !isGlassMode && 'opacity-90',
+            )}
+            onClick={() => {
+              playClick();
+              toggleExpandDecorations();
+            }}
+          >
+            <Sparkle />
+          </button>
+
+          {/* <Button
+            variant='secondary'
+            size='icon'
+            className={clsx(
+              'fixed top-4 left-4 z-50 opacity-90',
+              buttonBorderStyles,
+              'transition-transform duration-250 active:scale-95'
+            )}
+            onClick={() => {
+              playClick();
+            }}
+          >
+            <a href='https://monkeytype.com/' rel='noopener' target='_blank'>
+              <Keyboard />
+            </a>
+          </Button>
+ */}
+        </Suspense>
+      )}
+      <div
+        className={clsx(
+          '3xl:w-2/5 flex w-full flex-col items-center gap-4 px-4 pb-16 max-md:pt-4 sm:w-3/4 md:justify-center lg:w-1/2',
+          'z-50',
+          !isGlassMode && 'opacity-90',
+          expandDecorations && 'hidden',
+        )}
+      >
+        <div className='flex w-full flex-row items-center justify-between gap-2 px-1'>
+          <KanaDojoBanner />
+          <div className='flex w-1/2 flex-row justify-end gap-2 md:w-1/3'>
+            <button
+              type='button'
+              onClick={() => {
+                playClick();
+                window.open('https://tally.so/r/2E4rB9', '_blank', 'noopener');
+              }}
+              className={clsx(
+                'inline-flex sm:hidden',
+                'duration-250 hover:cursor-pointer hover:scale-105',
+                'active:scale-100 active:duration-225',
+                'fill-current text-(--secondary-color) hover:text-(--main-color)',
+              )}
+              aria-label='Report a bug'
+            >
+              <Bug size={32} fill='currentColor' />
+            </button>
+            <button
+              type='button'
+              onClick={() => {
+                playClick();
+                setTheme(theme === 'dark' ? 'light' : 'dark');
+              }}
+              className={clsx(
+                'hidden sm:inline-flex',
+                'duration-250 hover:cursor-pointer',
+                'active:scale-100 active:duration-225',
+                'text-(--secondary-color) hover:text-(--main-color)',
+              )}
+              aria-label='Toggle theme'
+            >
+              {theme === 'dark' ? <Moon size={32} /> : <Sun size={32} />}
+            </button>
+
+            <FontAwesomeIcon
+              icon={faDiscord}
+              size='2x'
+              className={clsx(
+                'duration-250 hover:cursor-pointer hover:scale-105',
+                'active:scale-100 active:duration-225',
+                'md:hidden',
+                'text-(--secondary-color) hover:text-(--main-color)',
+              )}
+              onClick={() => {
+                playClick();
+                window.open('https://discord.gg/CyvBNNrSmb', '_blank');
+              }}
+            />
+            <FontAwesomeIcon
+              icon={faGithub}
+              size='2x'
+              className={clsx(
+                'duration-250 hover:cursor-pointer hover:scale-105',
+                'active:scale-100 active:duration-225',
+                'text-(--secondary-color) hover:text-(--main-color)',
+              )}
+              onClick={() => {
+                playClick();
+                window.open('https://github.com/lingdojo/kana-dojo', '_blank');
+              }}
+            />
+            <button
+              type='button'
+              onClick={() => {
+                playClick();
+                window.open('https://tally.so/r/2E4rB9', '_blank', 'noopener');
+              }}
+              className={clsx(
+                'hidden sm:inline-flex',
+                'duration-250 hover:cursor-pointer hover:scale-105',
+                'active:scale-100 active:duration-225',
+                ' text-(--secondary-color) hover:text-(--main-color)',
+              )}
+              aria-label='Report a bug'
+            >
+              <Bug size={32}  />
+            </button>
+            <Heart
+              size={32}
+              className={clsx(
+                'duration-250 hover:cursor-pointer hover:scale-105',
+                'active:scale-100 active:duration-225',
+                'animate-bounce fill-current text-red-500',
+              )}
+              onClick={() => {
+                playClick();
+                window.open('https://ko-fi.com/kanadojo', '_blank');
+              }}
+            />
+          </div>
+        </div>
+        <Info />
+        <div className={clsx(
+          'w-full rounded-2xl',
+          USE_NEW_DESIGN
+            ? 'border-4 border-(--border-color) bg-(--card-color) overflow-hidden'
+            : 'border-1 border-(--border-color) bg-(--background-color) p-1'
+        )}>
+          <div className={clsx(
+            'rounded-2xl w-full',
+            USE_NEW_DESIGN
+              ? 'flex flex-col md:flex-row'
+              : 'bg-(--card-color) flex flex-col md:flex-row duration-250 transition-all ease-in-out'
+          )}>
+          {links.map((link, i) => (
+            <Fragment key={i}>
+              <Link
+                href={link.href}
+                prefetch
+                className={clsx('group w-full', !USE_NEW_DESIGN && 'overflow-hidden')}
+              >
+                <button
+                  className={clsx(
+                    'flex h-full w-full text-2xl',
+                    'items-center gap-3',
+                    'justify-start md:justify-center',
+                    'py-8',
+                    mobileLabelInset,
+                    'md:pl-0',
+                    'group',
+                    'hover:cursor-pointer',
+                    USE_NEW_DESIGN
+                      ? 'hover:bg-(--border-color)'
+                      : 'border-(--border-color) md:border-b-4 md:hover:border-(--main-color)/80 hover:bg-(--border-color)',
+                    !USE_NEW_DESIGN && i === 0 && 'rounded-tl-2xl rounded-bl-2xl',
+                    !USE_NEW_DESIGN && i === links.length - 1 && 'rounded-tr-2xl rounded-br-2xl',
+                  )}
+                  onClick={() => playClick()}
+                >
+                  <span
+                    lang='ja'
+                    className={characterTileClassName(
+                      i === 0
+                        ? '[animation-delay:0ms]'
+                        : i === 1
+                          ? '[animation-delay:800ms]'
+                          : '[animation-delay:1600ms]',
+                    )}
+                  >
+                    {link.name_ja}
+                  </span>
+                  <span lang='en' className='leading-none'>
+                    {link.name_en}
+                  </span>
+                </button>
+              </Link>
+
+              {i < links.length - 1 && (
+                <div
+                  className={clsx(
+                    'md:h-auto md:w-0 md:border-l-1',
+                    'border-(--border-color)',
+                    'w-full border-t-1 border-(--border-color)',
+                  )}
+                />
+              )}
+            </Fragment>
+          ))}
+          </div>
+        </div>
+      </div>
+      <div
+        className={clsx(
+          'fixed right-0 bottom-0 left-0 z-50 md:bottom-6',
+          'justify-center gap-2 max-md:flex',
+          'border-(--border-color) max-md:border-t-2',
+          'px-2 py-2 sm:px-4',
+          'flex items-center justify-between max-md:bg-(--background-color)',
+          expandDecorations && 'hidden',
+        )}
+      >
+        <div className='flex w-full items-center justify-evenly lg:w-2/5'>
+          {legalLinks.map((link, i) => (
+            <Link
+              href={link.href}
+              prefetch
+              key={i}
+              className={clsx(
+                'flex flex-row items-center gap-1 text-(--secondary-color) hover:cursor-pointer hover:text-(--main-color)',
+                (link.name === 'credits' || link.name === 'about') && 'hidden sm:flex',
+              )}
+              onClick={() => playClick()}
+            >
+              <link.icon className='size-4' />
+              <span className='text-xs'>{link.name}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+      {/* <a
+        href='https://vercel.com/oss'
+        target='_blank'
+        rel='noopener'
+        className='fixed right-5 bottom-10 z-50 hidden rounded-lg p-1 backdrop-blur-xs transition-opacity hover:opacity-80 lg:block'
+        aria-label='Vercel OSS Program'
+      >
+        <img
+          alt='Vercel OSS Program'
+          src='https://vercel.com/oss/program-badge.svg'
+          className='h-8 w-auto p-1'
+        />
+      </a> */}
+      {/* {showBanner && (
+        <NightlyBanner onSwitch={handleSwitch} onDismiss={handleDismiss} />
+      )} */}
+    </div>
+  );
+};
+
+export default MainMenu;
+
