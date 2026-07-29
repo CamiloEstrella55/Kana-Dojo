@@ -64,7 +64,14 @@ const cspReportOnly = [
   "base-uri 'self'",
 ].join('; ');
 
+// Mobile on-device build: static export bundled inside the Capacitor app.
+// Enabled via MOBILE_EXPORT=1 so the normal (server) build is unaffected.
+const isMobileExport = process.env.MOBILE_EXPORT === '1';
+
 const nextConfig: NextConfig = {
+  // Static export for the on-device mobile bundle (no server / no middleware).
+  ...(isMobileExport ? { output: 'export' as const, trailingSlash: true } : {}),
+
   // Performance optimizations
   reactStrictMode: true,
   compress: false, // Let Vercel handle compression
@@ -100,8 +107,9 @@ const nextConfig: NextConfig = {
   // Reduce overhead in development
   devIndicators: false,
 
-  // Optimize images
+  // Optimize images (must be unoptimized for static export — no image server)
   images: {
+    unoptimized: isMobileExport,
     formats: ['image/avif', 'image/webp'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
@@ -120,9 +128,10 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // Skip type checking during dev (run separately with `npm run check`)
+  // Skip type checking during dev and for the mobile export packaging build
+  // (types are validated separately via `npm run check`).
   typescript: {
-    ignoreBuildErrors: isDev,
+    ignoreBuildErrors: isDev || isMobileExport,
   },
 
   webpack: (config, { isServer }) => {
@@ -136,7 +145,12 @@ const nextConfig: NextConfig = {
     return config;
   },
 
-  // Cache headers for static assets - reduces data transfer and edge requests
+  // Cache headers for static assets - reduces data transfer and edge requests.
+  // Not supported with `output: export`, so omitted for the mobile bundle
+  // (CSP/security headers come from the native layer instead).
+  ...(isMobileExport
+    ? {}
+    : {
   async headers() {
     return [
       {
@@ -233,9 +247,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+      }),
 };
 
-export default withSentryConfig(withBundleAnalyzer(withNextIntl(nextConfig)), {
+const baseConfig = withBundleAnalyzer(withNextIntl(nextConfig));
+
+// Sentry injects a server tunnel route + instrumentation that can't be
+// statically exported, so skip it entirely for the on-device mobile bundle.
+export default isMobileExport
+  ? baseConfig
+  : withSentryConfig(baseConfig, {
   // For all available options, see:
   // https://www.npmjs.com/package/@sentry/webpack-plugin#options
 
@@ -271,4 +292,4 @@ export default withSentryConfig(withBundleAnalyzer(withNextIntl(nextConfig)), {
       removeDebugLogging: true,
     },
   },
-});
+    });

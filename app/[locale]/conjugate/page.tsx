@@ -32,7 +32,12 @@ export async function generateMetadata({
   searchParams,
 }: ConjugatePageProps): Promise<Metadata> {
   const { locale } = await params;
-  const { verb, v } = await searchParams;
+  // The static mobile export has no request-time query string; skip it so the
+  // page can be prerendered.
+  const { verb, v } =
+    process.env.MOBILE_EXPORT === '1'
+      ? { verb: undefined, v: undefined }
+      : await searchParams;
 
   // Get verb from URL parameter (support both 'verb' and 'v' for short URLs)
   const verbParam = verb || v;
@@ -68,7 +73,10 @@ export default async function ConjugatePage({
   searchParams,
 }: ConjugatePageProps) {
   const { locale } = await params;
-  const { verb, v } = await searchParams;
+  const { verb, v } =
+    process.env.MOBILE_EXPORT === '1'
+      ? { verb: undefined, v: undefined }
+      : await searchParams;
 
   // Get verb from URL parameter
   const verbParam = verb || v;

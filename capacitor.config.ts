@@ -3,20 +3,15 @@ import type { CapacitorConfig } from '@capacitor/cli';
 /**
  * KanaDojo native shell (Capacitor).
  *
- * Hybrid model: the native iOS/Android app loads the deployed Next.js site so
- * all server features (API routes, i18n SSR, OG images) keep working, while
- * Capacitor adds native storage, haptics, status bar, splash, and deep links.
- *
- * Point CAP_SERVER_URL at YOUR deployment of this repo (e.g. your Vercel URL)
- * so the auth + cross-device sync built in Phase 1 is present. It defaults to
- * the public site so a freshly built IPA still runs out of the box.
+ * On-device model: the Next.js app is built as a static export (`npm run
+ * build:mobile` → ./out) and bundled inside the app. It runs entirely on the
+ * device and talks directly to Supabase for auth + cross-device sync — no web
+ * hosting required.
  */
-const serverUrl = process.env.CAP_SERVER_URL || 'https://kanadojo.com';
-
 const config: CapacitorConfig = {
   appId: 'com.kanadojo.app',
   appName: 'KanaDojo',
-  webDir: 'mobile/www',
+  webDir: 'out',
   ios: {
     contentInset: 'always',
     backgroundColor: '#0b0b0f',
@@ -27,9 +22,8 @@ const config: CapacitorConfig = {
     backgroundColor: '#0b0b0f',
   },
   server: {
-    url: serverUrl,
-    cleartext: false,
-    // Allow the deployed origin to be treated as the app's own for navigation.
+    // Bundled files are served locally; only allow outbound nav to Supabase.
+    androidScheme: 'https',
     allowNavigation: ['*.supabase.co'],
   },
   plugins: {

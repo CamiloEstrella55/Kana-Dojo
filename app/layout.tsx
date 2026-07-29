@@ -131,10 +131,13 @@ interface RootLayoutProps {
 }
 
 export default async function RootLayout({ children }: RootLayoutProps) {
-  // Trigger rebuild: 2025-12-31
-  // Get locale from middleware header
-  const headersList = await headers();
-  const locale = headersList.get('x-locale') || 'en';
+  // Get locale from the middleware-set header. The mobile static export has no
+  // middleware/server, so fall back to the default locale there.
+  let locale = 'en';
+  if (process.env.MOBILE_EXPORT !== '1') {
+    const headersList = await headers();
+    locale = headersList.get('x-locale') || 'en';
+  }
 
   return (
     <html lang={locale} suppressHydrationWarning>

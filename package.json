@@ -41,6 +41,7 @@
     "vercel:ignore:test": "bash scripts/vercel-ignore-regression.sh",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
+    "build:mobile": "node scripts/mobile-build.mjs",
     "cap:sync": "cap sync",
     "cap:sync:ios": "cap sync ios",
     "cap:sync:android": "cap sync android",

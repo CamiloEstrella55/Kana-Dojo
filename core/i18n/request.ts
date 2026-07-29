@@ -35,8 +35,7 @@ const messageCache = new Map<string, Record<string, unknown>>();
 export default getRequestConfig(async ({ locale }) => {
   // Ensure locale is always defined and valid
   const validLocale =
-    locale &&
-      routing.locales.includes(locale as (typeof routing.locales)[number])
+    locale && (routing.locales as readonly string[]).includes(locale)
       ? locale
       : routing.defaultLocale;
 
