@@ -4,11 +4,8 @@ name: Android Debug APK
 # uploads it as an artifact. Debug APKs install directly on any device with
 # "install from unknown sources" enabled — handy for testing on real hardware.
 
+# Manual only — runs when you trigger it from the Actions tab (Run workflow).
 on:
-  push:
-    branches: [main, master]
-    paths-ignore:
-      - '**.md'
   workflow_dispatch:
 
 jobs:
@@ -22,7 +19,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Setup JDK 21
@@ -57,4 +54,4 @@ jobs:
           name: KanaDojo-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1

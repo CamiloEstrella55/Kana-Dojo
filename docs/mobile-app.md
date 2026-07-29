@@ -45,8 +45,9 @@ Then Run from Xcode / Android Studio onto a simulator or device.
 
 ## CI builds (GitHub Actions)
 
-Two workflows produce installable artifacts on every push to `main`/`master`
-(and via **Run workflow** / `workflow_dispatch`):
+Two workflows produce installable artifacts. They are **manual-only** — trigger
+them from the repo **Actions** tab → select the workflow → **Run workflow**.
+Artifacts are retained for **1 day**.
 
 - **`.github/workflows/ios-unsigned-ipa.yml`** → `KanaDojo-unsigned-ipa`
   (an **unsigned** `.ipa`). Unsigned IPAs must be signed before installing on a

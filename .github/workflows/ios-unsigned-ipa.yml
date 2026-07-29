@@ -5,11 +5,8 @@ name: iOS Unsigned IPA
 # they are meant for signing later (e.g. with your own certificate, AltStore,
 # Sideloadly) or for inspection. Signing requires an Apple Developer account.
 
+# Manual only — runs when you trigger it from the Actions tab (Run workflow).
 on:
-  push:
-    branches: [main, master]
-    paths-ignore:
-      - '**.md'
   workflow_dispatch:
 
 jobs:
@@ -26,7 +23,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -81,4 +78,4 @@ jobs:
           name: KanaDojo-unsigned-ipa
           path: ${{ runner.temp }}/KanaDojo-unsigned.ipa
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
