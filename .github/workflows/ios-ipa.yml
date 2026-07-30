@@ -15,11 +15,14 @@ name: iOS IPA
 #   IOS_CERTIFICATE_PASSWORD          the password set on that .p12
 #   IOS_PROVISIONING_PROFILE_BASE64   base64 of your .mobileprovision
 #
-# The provisioning profile MUST be issued for the app id `com.kanadojo.app`
-# (see capacitor.config.ts) and MUST include your iPhone's UDID. A FREE Apple ID
-# profile works, but it expires after 7 days — when it does, regenerate it,
-# re-encode it, and update IOS_PROVISIONING_PROFILE_BASE64. The certificate is
-# valid ~1 year, so it usually does not need refreshing.
+# The app's bundle id is rewritten to match the profile automatically, so the
+# profile does NOT need to be for `com.kanadojo.app` — any explicit app id works.
+#   • Enterprise / signing-service profile (ProvisionsAllDevices = true):
+#     installs on any device, no UDID needed, valid ~1 year. Nothing to refresh
+#     until the cert/profile expires (or the service revokes it).
+#   • Free Apple ID profile: must include your iPhone's UDID and expires after
+#     7 days — regenerate, re-encode, and update IOS_PROVISIONING_PROFILE_BASE64
+#     when it does. The certificate itself is valid ~1 year.
 #
 # You do NOT need to add your Apple ID password. Signing uses only the cert +
 # profile above.
@@ -133,16 +136,21 @@ jobs:
           # --- Extract entitlements + app id from the provisioning profile ---
           security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
           /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' "$RUNNER_TEMP/profile.plist" > "$RUNNER_TEMP/entitlements.plist"
-          PROFILE_APPID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")"
+          PROFILE_APPID_FULL="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")"
+          PROFILE_APP_ID="${PROFILE_APPID_FULL#*.}"   # drop the "<TEAMID>." prefix
           APP_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
-          echo "App bundle id : $APP_BUNDLE_ID"
-          echo "Profile app id: $PROFILE_APPID"
-          case "$PROFILE_APPID" in
-            *".$APP_BUNDLE_ID")
-              echo "Profile app id matches the app bundle id." ;;
-            *)
-              echo "::warning::Provisioning profile app id ($PROFILE_APPID) does not match the app bundle id ($APP_BUNDLE_ID). The IPA will build but iOS will refuse to install it. The profile must be for '$APP_BUNDLE_ID'." ;;
-          esac
+          echo "App bundle id  : $APP_BUNDLE_ID"
+          echo "Profile app id : $PROFILE_APP_ID"
+
+          # The app's bundle id MUST match the profile's app id, or iOS refuses
+          # to install. Explicit-app-id profiles (common with enterprise / paid
+          # signing services) are bound to one id — rewrite the app to match so
+          # the same profile signs any app. Wildcard profiles ("*") need no change.
+          if [ "$PROFILE_APP_ID" != "*" ] && [ "$PROFILE_APP_ID" != "$APP_BUNDLE_ID" ]; then
+            echo "Rewriting app bundle id to match the profile: $APP_BUNDLE_ID -> $PROFILE_APP_ID"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $PROFILE_APP_ID" "$APP/Info.plist"
+            APP_BUNDLE_ID="$PROFILE_APP_ID"
+          fi
 
           # --- Embed the profile and re-sign (nested code first, then the app) ---
           cp "$RUNNER_TEMP/profile.mobileprovision" "$APP/embedded.mobileprovision"
