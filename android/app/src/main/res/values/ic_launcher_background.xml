@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Matches the splash screen and native chrome (capacitor.config.ts) so the
+         adaptive icon's masked edges blend with the rest of the app. -->
+    <color name="ic_launcher_background">#0B0B0F</color>
 </resources>
