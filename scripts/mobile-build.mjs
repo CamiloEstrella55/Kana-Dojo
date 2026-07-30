@@ -85,24 +85,59 @@ if (existsSync(esDir)) {
 
 // The export puts locale pages under /en and /es (no root index). Write a root
 // index.html that forwards to the default locale so Capacitor's entry resolves.
+//
+// IMPORTANT: forward to the explicit file `./en/index.html`, NOT the directory
+// `./en/`. Capacitor's Android WebView runs with `server.html5mode` enabled by
+// default, which routes every *extension-less* request (including `/en/`) back
+// to the root `index.html` — i.e. this very redirect stub. Redirecting to `/en/`
+// therefore loops the stub onto itself forever and the app never loads (a blank
+// screen behind the splash). A path that ends in `.html` is served as a real
+// file, escaping that fallback. The app then rewrites the URL back to `/en/`
+// before React hydrates (see the head script in app/layout.tsx) so routing and
+// hydration match the web build.
 const rootIndex = join(root, 'out', 'index.html');
 writeFileSync(
   rootIndex,
   `<!doctype html>
-<html lang="en">
+<html lang="en" style="background:#0b0b0f">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>KanaDojo</title>
-    <meta http-equiv="refresh" content="0; url=./en/" />
+    <meta http-equiv="refresh" content="0; url=./en/index.html" />
     <script>
-      location.replace('./en/' + location.search + location.hash);
+      location.replace('./en/index.html' + location.search + location.hash);
     </script>
   </head>
-  <body style="margin:0;background:#0b0b0f"></body>
+  <body style="margin:0;background:#0b0b0f;color:#0f0;font:13px/1.6 monospace">
+    <!-- On-device fallback: if the redirect above succeeds, this whole document
+         is discarded before the timer fires and nothing shows. If the WebView
+         cannot load ./en/index.html (the entry did not resolve), the timer
+         fires and paints the reason on screen — the only way to diagnose a
+         blank entry when no remote debugger is attached. -->
+    <div id="kd-boot" style="padding:16px;display:none;white-space:pre-wrap;word-break:break-word"></div>
+    <script>
+      (function () {
+        var box = document.getElementById('kd-boot');
+        window.addEventListener('error', function (e) {
+          var t = e.target, u = t && (t.src || t.href);
+          box.style.display = 'block';
+          box.textContent += '\\n' + (u ? 'RESOURCE FAILED: ' + u : 'ERROR: ' + (e.message || e.error));
+        }, true);
+        setTimeout(function () {
+          box.style.display = 'block';
+          box.textContent =
+            'KanaDojo: still on the entry redirect after 2.5s.\\n' +
+            'The WebView could not load ./en/index.html.\\n' +
+            'URL: ' + location.href + '\\nUA: ' + navigator.userAgent +
+            box.textContent;
+        }, 2500);
+      })();
+    </script>
+  </body>
 </html>
 `,
 );
-console.log('[mobile-build] wrote out/index.html → ./en/');
+console.log('[mobile-build] wrote out/index.html → ./en/index.html');
 
 console.log('[mobile-build] static export complete → ./out');

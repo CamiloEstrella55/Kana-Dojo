@@ -135,7 +135,7 @@ const isMobileExport = process.env.MOBILE_EXPORT === '1';
 // chunk loads, caught in the capture phase) directly onto the screen. Registered
 // as the very first thing in <head> so it catches failures in later tags too.
 // Remove once the blank-screen cause is fixed.
-const MOBILE_STARTUP_DIAGNOSTIC = `(function(){var L=[];function render(){var el=document.getElementById('kd-diag');if(!el){el=document.createElement('div');el.id='kd-diag';el.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#111;color:#0f0;font:12px/1.5 monospace;padding:14px;overflow:auto;white-space:pre-wrap;word-break:break-word';el.addEventListener('click',function(){el.style.display='none';});(document.body||document.documentElement).appendChild(el);}el.style.display='block';el.textContent='KanaDojo diagnostics (tap to dismiss)\\nUA: '+navigator.userAgent+'\\nURL: '+location.href+'\\n\\n'+(L.length?L.join('\\n\\n'):'No JS errors captured. If the screen was blank, the document or its chunks failed to load before this ran (a load/navigation failure, not a JS crash).');}window.__kdDiag=render;window.addEventListener('error',function(e){var t=e.target;if(t&&(t.tagName==='LINK'||t.tagName==='SCRIPT'||t.tagName==='IMG')){var u=t.src||t.href||'';L.push('RESOURCE FAILED:\\n'+u);if(u.indexOf('/_next/')>-1)render();}else{L.push('ERROR: '+(e.message||e.error)+'\\n'+((e.error&&e.error.stack)||''));render();}},true);window.addEventListener('unhandledrejection',function(e){var r=e.reason;L.push('PROMISE REJECTION: '+((r&&r.message)||r)+'\\n'+((r&&r.stack)||''));render();});window.addEventListener('load',function(){setTimeout(function(){if(document.querySelectorAll('body *').length<40)render();},6000);});})();`;
+const MOBILE_STARTUP_DIAGNOSTIC = `(function(){var L=[];function render(){var el=document.getElementById('kd-diag');if(!el){el=document.createElement('div');el.id='kd-diag';el.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#111;color:#0f0;font:12px/1.5 monospace;padding:14px;overflow:auto;white-space:pre-wrap;word-break:break-word';el.addEventListener('click',function(){el.style.display='none';});(document.body||document.documentElement).appendChild(el);}el.style.display='block';el.textContent='KanaDojo diagnostics (tap to dismiss)\\nUA: '+navigator.userAgent+'\\nURL: '+location.href+'\\n\\n'+(L.length?L.join('\\n\\n'):'No JS errors captured. If the screen was blank, the document or its chunks failed to load before this ran (a load/navigation failure, not a JS crash).');}window.__kdDiag=render;window.addEventListener('error',function(e){var t=e.target;if(t&&(t.tagName==='LINK'||t.tagName==='SCRIPT'||t.tagName==='IMG')){var u=t.src||t.href||'';L.push('RESOURCE FAILED:\\n'+u);if(u.indexOf('/_next/')>-1)render();}else{L.push('ERROR: '+(e.message||e.error)+'\\n'+((e.error&&e.error.stack)||''));}},true);window.addEventListener('unhandledrejection',function(e){var r=e.reason;L.push('PROMISE REJECTION: '+((r&&r.message)||r)+'\\n'+((r&&r.stack)||''));});window.addEventListener('load',function(){setTimeout(function(){if(document.querySelectorAll('body *').length<40)render();},6000);});})();`;
 
 interface RootLayoutProps {
   readonly children: React.ReactNode;
@@ -157,6 +157,20 @@ export default async function RootLayout({ children }: RootLayoutProps) {
         {isMobileExport && (
           <script
             dangerouslySetInnerHTML={{ __html: MOBILE_STARTUP_DIAGNOSTIC }}
+          />
+        )}
+        {/* Mobile entry normalization: the native WebView enters at
+            `/en/index.html` (an explicit file, so Capacitor's html5mode doesn't
+            loop the redirect stub — see scripts/mobile-build.mjs). Strip the
+            `index.html` back to `/en/` BEFORE React hydrates so the router state
+            and the pre-rendered markup agree (otherwise the pathname mismatch
+            triggers a hydration error). Runs synchronously in <head>, before the
+            React bundle at the end of <body>. */}
+        {isMobileExport && (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `try{var p=location.pathname;if(p.slice(-11)==='/index.html'){history.replaceState(null,'',p.slice(0,-10)+location.search+location.hash);}}catch(e){}`,
+            }}
           />
         )}
         {/* Anti-flash: paint the persisted theme background before hydration so
