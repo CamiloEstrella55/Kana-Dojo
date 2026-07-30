@@ -36,6 +36,9 @@ import { useClick } from '@/shared/hooks/generic/useAudio';
 import { cardBorderStyles } from '@/shared/utils/styles';
 import { ActionButton } from '@/shared/ui/components/ActionButton';
 
+// The native build greets signed-out users with the sign-in gate first.
+const IS_MOBILE_EXPORT = process.env.NEXT_PUBLIC_MOBILE_EXPORT === '1';
+
 const CHAOS_THEME_GRADIENT = `linear-gradient(
   142deg,
   oklch(66.0% 0.18 25.0 / 1) 0%,
@@ -139,7 +142,11 @@ const WelcomeModal = () => {
   const [step, setStep] = useState<'welcome' | 'themes' | 'fonts'>('welcome');
   const [isVisible, setIsVisible] = useState(false);
   const isDemoRoute = pathname === '/demo' || pathname.endsWith('/demo');
-  const shouldShowModal = isVisible && !isDemoRoute;
+  // On native the sign-in gate is shown first; queue behind it so the two
+  // onboarding surfaces never stack on top of each other.
+  const hasSeenAuthGate = useOnboardingStore(state => state.hasSeenAuthGate);
+  const authGatePending = IS_MOBILE_EXPORT && !hasSeenAuthGate;
+  const shouldShowModal = isVisible && !isDemoRoute && !authGatePending;
 
   const {
     theme: selectedTheme,

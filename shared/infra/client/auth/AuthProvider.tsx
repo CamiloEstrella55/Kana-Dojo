@@ -97,30 +97,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     let subscription: { unsubscribe: () => void } | null = null;
 
+    // The app is offline-first, so the initial session check must never be able
+    // to strand the UI in a loading state: `getSession()` can reject or hang
+    // when the device is offline or Supabase is unreachable. Resolve `loading`
+    // on success, on failure, and on a timeout — whichever happens first.
+    const settleLoading = () => {
+      if (!active) return;
+      setLoading(false);
+    };
+    const loadingTimeout = setTimeout(settleLoading, 8000);
+
     // Await native init first so a returning native session is read from
     // Capacitor secure storage before the initial getSession() call.
-    ensureNativeInit().then(() => {
-      if (!active) return;
-
-      supabase.auth.getSession().then(({ data }) => {
+    ensureNativeInit()
+      .then(() => {
         if (!active) return;
-        setSession(data.session);
-        setLoading(false);
-        if (data.session) void beginSync();
-      });
 
-      subscription = supabase.auth.onAuthStateChange((event, nextSession) => {
-        setSession(nextSession);
-        if (event === 'SIGNED_IN' && nextSession) {
-          if (!stopRef.current) void beginSync();
-        } else if (event === 'SIGNED_OUT') {
-          endSync();
-        }
-      }).data.subscription;
-    });
+        supabase.auth
+          .getSession()
+          .then(({ data }) => {
+            if (!active) return;
+            setSession(data.session);
+            if (data.session) void beginSync();
+          })
+          .catch(err => {
+            console.warn('[auth] getSession failed:', err);
+          })
+          .finally(settleLoading);
+
+        subscription = supabase.auth.onAuthStateChange((event, nextSession) => {
+          setSession(nextSession);
+          if (event === 'SIGNED_IN' && nextSession) {
+            if (!stopRef.current) void beginSync();
+          } else if (event === 'SIGNED_OUT') {
+            endSync();
+          }
+        }).data.subscription;
+      })
+      .catch(err => {
+        console.warn('[auth] native init failed:', err);
+        settleLoading();
+      });
 
     return () => {
       active = false;
+      clearTimeout(loadingTimeout);
       subscription?.unsubscribe();
       endSync();
     };

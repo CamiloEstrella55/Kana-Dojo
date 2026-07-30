@@ -29,6 +29,7 @@ import VisualEffectsRenderer from '@/features/Preferences/components/renderers/V
 import {
   AuthProvider,
   AuthModal,
+  AuthGate,
   AccountButton,
 } from '@/shared/infra/client/auth';
 import { ensureNativeInit } from '@/shared/infra/client/native/initNative';
@@ -40,6 +41,10 @@ if (typeof window !== 'undefined') {
   const selector = getGlobalAdaptiveSelector();
   selector.ensureLoaded().catch(console.error);
 }
+
+// The first-run sign-in screen ships only in the on-device mobile bundle; the
+// website stays a public, indexable landing page.
+const isMobileExport = process.env.NEXT_PUBLIC_MOBILE_EXPORT === '1';
 
 // Define a type for the font object for clarity, adjust as needed
 type FontObject = {
@@ -219,61 +224,62 @@ export default function ClientLayout({
 
   return (
     <AuthProvider>
-    <div
-      data-scroll-restoration-id='container'
-      className={clsx(
-        'min-h-[100dvh] max-w-[100dvw] bg-(--background-color) text-(--main-color)',
-        fontClassName,
-      )}
-      style={{
-        height: '100dvh',
-        overflowY: 'auto',
-        ...(() => {
-          if (!isPremiumThemeId(effectiveTheme)) return {};
-
-          const wallpaperId = getThemeDefaultWallpaperId(effectiveTheme);
-          if (!wallpaperId) return {};
-
-          const wallpaper = getWallpaperById(wallpaperId);
-          if (!wallpaper) return {};
-
-          // Use image-set for AVIF + WebP fallback
-          const backgroundImage = wallpaper.urlWebp
-            ? `image-set(url('${wallpaper.url}') type('image/avif'), url('${wallpaper.urlWebp}') type('image/webp'))`
-            : `url('${wallpaper.url}')`;
-
-          return {
-            backgroundImage,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundAttachment: 'fixed',
-          };
-        })(),
-      }}
-    >
-      <GlobalAudioController />
-      <ServiceWorkerRegistration />
-      <VisualEffectsRenderer />
       <div
-        className="fixed top-0 right-0 z-40 p-2"
+        data-scroll-restoration-id='container'
+        className={clsx(
+          'min-h-[100dvh] max-w-[100dvw] bg-(--background-color) text-(--main-color)',
+          fontClassName,
+        )}
         style={{
-          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)',
-          paddingRight: 'calc(env(safe-area-inset-right, 0px) + 0.5rem)',
+          height: '100dvh',
+          overflowY: 'auto',
+          ...(() => {
+            if (!isPremiumThemeId(effectiveTheme)) return {};
+
+            const wallpaperId = getThemeDefaultWallpaperId(effectiveTheme);
+            if (!wallpaperId) return {};
+
+            const wallpaper = getWallpaperById(wallpaperId);
+            if (!wallpaper) return {};
+
+            // Use image-set for AVIF + WebP fallback
+            const backgroundImage = wallpaper.urlWebp
+              ? `image-set(url('${wallpaper.url}') type('image/avif'), url('${wallpaper.urlWebp}') type('image/webp'))`
+              : `url('${wallpaper.url}')`;
+
+            return {
+              backgroundImage,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundAttachment: 'fixed',
+            };
+          })(),
         }}
       >
-        <AccountButton />
+        <GlobalAudioController />
+        <ServiceWorkerRegistration />
+        <VisualEffectsRenderer />
+        <div
+          className='fixed top-0 right-0 z-40 p-2'
+          style={{
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)',
+            paddingRight: 'calc(env(safe-area-inset-right, 0px) + 0.5rem)',
+          }}
+        >
+          <AccountButton />
+        </div>
+        {children}
+        <ScrollRestoration />
+        <WelcomeModal />
+        <AchievementNotificationContainer />
+        {/* hamza */}
+        <AchievementPromptsContainer />
+        <AchievementIntegration />
+        <BackToTop />
+        <MobileBottomBar />
+        {isMobileExport && <AuthGate />}
+        <AuthModal />
       </div>
-      {children}
-      <ScrollRestoration />
-      <WelcomeModal />
-      <AchievementNotificationContainer />
-      {/* hamza */}
-      <AchievementPromptsContainer />
-      <AchievementIntegration />
-      <BackToTop />
-      <MobileBottomBar />
-      <AuthModal />
-    </div>
     </AuthProvider>
   );
 }

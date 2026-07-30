@@ -24,18 +24,35 @@ const inFlightLoads = new Map<string, Promise<AudioBuffer | null>>();
 const CLICK_SOUND_PRELOAD_LIMIT = 3;
 
 /**
- * Get or create the shared AudioContext
- * AudioContext must be created after user interaction due to browser policies
+ * Get or create the shared AudioContext.
+ * AudioContext must be created after user interaction due to browser policies.
+ *
+ * Returns `null` instead of throwing when Web Audio is unavailable. This is
+ * critical: `play()` is called synchronously as the FIRST statement of ~150
+ * click handlers, so anything that throws here would abort every one of them
+ * and make the whole UI unresponsive. Some embedded WebViews (notably older
+ * iOS WKWebView) expose only the prefixed `webkitAudioContext`, or refuse to
+ * construct a context at all — a missing click sound must never cost a tap.
  */
-const getAudioContext = (): AudioContext => {
-  if (!audioContext || audioContext.state === 'closed') {
-    audioContext = new AudioContext();
+const getAudioContext = (): AudioContext | null => {
+  try {
+    if (!audioContext || audioContext.state === 'closed') {
+      const Ctor =
+        typeof AudioContext !== 'undefined'
+          ? AudioContext
+          : (window as unknown as { webkitAudioContext?: typeof AudioContext })
+              .webkitAudioContext;
+      if (!Ctor) return null;
+      audioContext = new Ctor();
+    }
+    // Resume if suspended (browsers suspend AudioContext until user interaction)
+    if (audioContext.state === 'suspended') {
+      void audioContext.resume().catch(() => {});
+    }
+    return audioContext;
+  } catch {
+    return null;
   }
-  // Resume if suspended (browsers suspend AudioContext until user interaction)
-  if (audioContext.state === 'suspended') {
-    audioContext.resume();
-  }
-  return audioContext;
 };
 
 /**
@@ -52,6 +69,7 @@ const loadAudioBuffer = async (url: string): Promise<AudioBuffer | null> => {
   const loadPromise = (async () => {
     try {
       const ctx = getAudioContext();
+      if (!ctx) return null;
       const response = await fetch(url, { cache: 'force-cache' });
       if (!response.ok) throw new Error(`Failed to fetch ${url}`);
 
@@ -78,17 +96,22 @@ const loadAudioBuffer = async (url: string): Promise<AudioBuffer | null> => {
  */
 const playBuffer = (buffer: AudioBuffer, volume: number = 1): void => {
   const ctx = getAudioContext();
+  if (!ctx) return;
 
-  const source = ctx.createBufferSource();
-  const gainNode = ctx.createGain();
+  try {
+    const source = ctx.createBufferSource();
+    const gainNode = ctx.createGain();
 
-  source.buffer = buffer;
-  gainNode.gain.value = volume;
+    source.buffer = buffer;
+    gainNode.gain.value = volume;
 
-  source.connect(gainNode);
-  gainNode.connect(ctx.destination);
+    source.connect(gainNode);
+    gainNode.connect(ctx.destination);
 
-  source.start(0);
+    source.start(0);
+  } catch {
+    /* playback is best-effort; never let a sound break the caller */
+  }
 };
 
 // =============================================================================
@@ -102,17 +125,26 @@ const playBuffer = (buffer: AudioBuffer, volume: number = 1): void => {
 const createAudioPool = (url: string, volume: number = 1) => {
   const ensureLoaded = () => loadAudioBuffer(url);
 
+  // Never throws: this runs as the first statement of ~150 click handlers, so a
+  // failure here would swallow the click itself (an unresponsive UI) rather than
+  // just the sound.
   const play = () => {
-    // Unlock AudioContext synchronously during user interaction
-    getAudioContext();
-    
-    const cached = bufferCache.get(url);
-    if (cached) {
-      playBuffer(cached, volume);
-    } else {
-      ensureLoaded().then(b => {
-        if (b) playBuffer(b, volume);
-      });
+    try {
+      // Unlock AudioContext synchronously during user interaction
+      getAudioContext();
+
+      const cached = bufferCache.get(url);
+      if (cached) {
+        playBuffer(cached, volume);
+      } else {
+        ensureLoaded()
+          .then(b => {
+            if (b) playBuffer(b, volume);
+          })
+          .catch(() => {});
+      }
+    } catch {
+      /* audio is best-effort — a missing sound must never cost a tap */
     }
   };
 
@@ -289,15 +321,22 @@ export const useClick = () => {
     void preloadClickSoundPack(clickSoundId);
   }, [clickSoundId]);
 
+  // Callers use this as `playClick(); ...rest of the handler`, so it must be
+  // total: any throw here would skip the rest of the handler and read to the
+  // user as a dead button.
   const playClickById = useCallback(
     (soundId: ClickSoundId) => {
-      if (silentMode) return;
-      const variantBaseUrls = getClickSoundVariantBaseUrls(soundId);
-      if (variantBaseUrls.length === 0) return;
-      const baseUrl =
-        variantBaseUrls[random.integer(0, variantBaseUrls.length - 1)];
-      const pool = getClickPool(baseUrl);
-      pool.play();
+      try {
+        if (silentMode) return;
+        const variantBaseUrls = getClickSoundVariantBaseUrls(soundId);
+        if (variantBaseUrls.length === 0) return;
+        const baseUrl =
+          variantBaseUrls[random.integer(0, variantBaseUrls.length - 1)];
+        const pool = getClickPool(baseUrl);
+        pool.play();
+      } catch {
+        /* never let the click sound break the click */
+      }
     },
     [silentMode],
   );
@@ -313,8 +352,12 @@ export const useCorrect = () => {
   const { silentMode } = useAudioPreferences();
 
   const playCorrect = useCallback(() => {
-    if (silentMode) return;
-    getCorrectPool().play();
+    try {
+      if (silentMode) return;
+      getCorrectPool().play();
+    } catch {
+      /* best-effort audio */
+    }
   }, [silentMode]);
 
   return { playCorrect };
@@ -324,18 +367,26 @@ export const useError = () => {
   const { silentMode } = useAudioPreferences();
 
   const playError = useCallback(() => {
-    if (silentMode) return;
-    getErrorPool().play();
+    try {
+      if (silentMode) return;
+      getErrorPool().play();
+    } catch {
+      /* best-effort audio */
+    }
   }, [silentMode]);
 
   // Issue #4: Audio pooling - Web Audio API naturally supports overlapping sounds
   const playErrorTwice = useCallback(() => {
-    if (silentMode) return;
+    try {
+      if (silentMode) return;
 
-    const pool = getErrorPool();
-    pool.play();
-    // Second play after 90ms - Web Audio API handles overlap naturally
-    setTimeout(() => pool.play(), 90);
+      const pool = getErrorPool();
+      pool.play();
+      // Second play after 90ms - Web Audio API handles overlap naturally
+      setTimeout(() => pool.play(), 90);
+    } catch {
+      /* best-effort audio */
+    }
   }, [silentMode]);
 
   return {
