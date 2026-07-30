@@ -8,11 +8,13 @@ import { getLocalMutationMs, setLocalMutationMs } from './syncMeta';
 import useStatsStore from '@/features/Progress/store/useStatsStore';
 import useAchievementStore from '@/features/Achievements/store/useAchievementStore';
 import useGoalTimersStore from '@/features/Preferences/store/useGoalTimersStore';
+import usePreferencesStore from '@/features/Preferences/store/usePreferencesStore';
 import useVocabStore from '@/features/Vocabulary/store/useVocabStore';
 import useSetProgressStore, {
   type AllTimeSetProgress,
 } from '@/features/Progress/store/useSetProgressStore';
 import useVisitStore from '@/features/Progress/store/useVisitStore';
+import { getGlobalAdaptiveSelector } from '@/shared/utils/adaptiveSelection';
 
 /** Minimal shape of a Zustand store with the persist middleware attached. */
 type PersistStore = StoreApi<unknown> & {
@@ -163,10 +165,70 @@ const visitsAdapter: ProgressSyncAdapter = {
 };
 
 /**
- * The stores that sync across devices: progress, statistics, streaks,
- * achievements, goals, and saved vocabulary. Derived caches (kanji-cache,
- * vocab-cache), UI/session state, and onboarding flags are intentionally
- * excluded.
+ * Adaptive selection weights (the SRS learning engine's per-character
+ * memory: all-time correct/wrong that drives what you're shown next). Stored in
+ * localforage under `kanadojo-adaptive-weights-global`. Merge keeps the higher
+ * counts per character so the learning model survives syncing across devices.
+ */
+interface StoredWeights {
+  version: number;
+  weights: Record<string, { correct: number; wrong: number }>;
+}
+
+function isStoredWeights(v: unknown): v is StoredWeights {
+  return (
+    !!v &&
+    typeof v === 'object' &&
+    'weights' in v &&
+    typeof (v as StoredWeights).weights === 'object' &&
+    (v as StoredWeights).weights !== null
+  );
+}
+
+const adaptiveWeightsAdapter: ProgressSyncAdapter = {
+  key: 'kanadojo-adaptive-weights',
+  async read() {
+    const selector = getGlobalAdaptiveSelector();
+    await selector.ensureLoaded();
+    return {
+      data: selector.exportSyncData(),
+      updatedAtMs: getLocalMutationMs('kanadojo-adaptive-weights'),
+    };
+  },
+  async applyRemote(payload) {
+    if (!isStoredWeights(payload.data)) return;
+    const selector = getGlobalAdaptiveSelector();
+    await selector.ensureLoaded();
+    await selector.importSyncData(payload.data);
+    setLocalMutationMs('kanadojo-adaptive-weights', payload.updatedAtMs);
+  },
+  merge(local, remote) {
+    if (!isStoredWeights(local.data)) return remote;
+    if (!isStoredWeights(remote.data)) return local;
+    const weights: StoredWeights['weights'] = { ...remote.data.weights };
+    for (const [char, w] of Object.entries(local.data.weights)) {
+      const r = remote.data.weights[char];
+      weights[char] = {
+        correct: Math.max(w.correct, r?.correct ?? 0),
+        wrong: Math.max(w.wrong, r?.wrong ?? 0),
+      };
+    }
+    return {
+      data: { version: 2, weights } satisfies StoredWeights,
+      updatedAtMs: Math.max(local.updatedAtMs, remote.updatedAtMs),
+    };
+  },
+  subscribe(onChange) {
+    return getGlobalAdaptiveSelector().subscribe(onChange);
+  },
+};
+
+/**
+ * The stores that sync across devices: statistics, streaks, achievements,
+ * goals, saved vocabulary, per-set SRS progress, the adaptive learning weights,
+ * and user preferences (theme/font/sound/etc.). Derived caches (kanji-cache,
+ * vocab-cache), custom wallpaper/theme image data, UI/session state, and
+ * onboarding flags are intentionally excluded.
  */
 export const SYNC_ADAPTERS: ProgressSyncAdapter[] = [
   persistLocalStorageAdapter(
@@ -182,9 +244,14 @@ export const SYNC_ADAPTERS: ProgressSyncAdapter[] = [
     'kanadojo-goal-timers',
   ),
   persistLocalStorageAdapter(
+    usePreferencesStore as unknown as PersistStore,
+    'theme-storage',
+  ),
+  persistLocalStorageAdapter(
     useVocabStore as unknown as PersistStore,
     'vocabulary-storage',
   ),
   setProgressAdapter,
   visitsAdapter,
+  adaptiveWeightsAdapter,
 ];

@@ -80,12 +80,27 @@ export function createAdaptiveSelector(storageKey?: string) {
 
   // Prevent immediate duplicates.
   let lastSelectedCharacter: string | null = null;
-  const sessionFormatPerformance: Map<string, Map<string, FormatPerformance>> =
-    new Map();
+  const sessionFormatPerformance: Map<
+    string,
+    Map<string, FormatPerformance>
+  > = new Map();
 
   // Coalesced persistence without timers.
   let persistInFlight: Promise<void> | null = null;
   let persistQueued = false;
+
+  // Change listeners for cross-device progress sync. Fired when the persisted
+  // (historical) weights change so the sync engine can push the update.
+  const syncListeners = new Set<() => void>();
+  const notifySyncListeners = (): void => {
+    syncListeners.forEach(listener => {
+      try {
+        listener();
+      } catch {
+        /* ignore listener errors */
+      }
+    });
+  };
 
   const clamp = (value: number, min: number, max: number): number =>
     Math.max(min, Math.min(max, value));
@@ -141,7 +156,11 @@ export function createAdaptiveSelector(storageKey?: string) {
     const existing = formatMap.get(normalizedFormat);
     if (existing) return existing;
 
-    const initial: FormatPerformance = { correct: 0, wrong: 0, pendingWrong: false };
+    const initial: FormatPerformance = {
+      correct: 0,
+      wrong: 0,
+      pendingWrong: false,
+    };
     formatMap.set(normalizedFormat, initial);
     return initial;
   };
@@ -234,7 +253,11 @@ export function createAdaptiveSelector(storageKey?: string) {
     const attempts = correct + wrong;
     const accuracy =
       (correct + priorCorrect) / (attempts + priorCorrect + priorWrong);
-    return clamp(1 + (neutralAccuracy - accuracy) * scale, minWeight, maxWeight);
+    return clamp(
+      1 + (neutralAccuracy - accuracy) * scale,
+      minWeight,
+      maxWeight,
+    );
   };
 
   // Calculate adaptive weight for a character
@@ -256,14 +279,18 @@ export function createAdaptiveSelector(storageKey?: string) {
     } = weight;
 
     // Factor 1: Historical difficulty (persisted all-time signal)
-    const historicalWeight = toAccuracyWeight(historicalCorrect, historicalWrong, {
-      minWeight: 0.65,
-      maxWeight: 2.0,
-      priorCorrect: 2,
-      priorWrong: 2,
-      scale: 1.4,
-      neutralAccuracy: 0.74,
-    });
+    const historicalWeight = toAccuracyWeight(
+      historicalCorrect,
+      historicalWrong,
+      {
+        minWeight: 0.65,
+        maxWeight: 2.0,
+        priorCorrect: 2,
+        priorWrong: 2,
+        scale: 1.4,
+        neutralAccuracy: 0.74,
+      },
+    );
 
     // Factor 2: Session difficulty (short-term adaptation signal)
     const sessionAttempts = sessionCorrect + sessionWrong;
@@ -400,6 +427,7 @@ export function createAdaptiveSelector(storageKey?: string) {
     }
     sessionAnswerCount += 1;
     void persistHistorical();
+    notifySyncListeners();
   };
 
   /**
@@ -500,6 +528,52 @@ export function createAdaptiveSelector(storageKey?: string) {
   };
 
   /**
+   * Export the persisted (historical) weights in the on-disk shape. Used by the
+   * cross-device progress sync to snapshot the learning state for the cloud.
+   */
+  const exportSyncData = (): StoredWeights => ({
+    version: 2,
+    weights: Object.fromEntries(
+      Array.from(characterWeights.entries()).map(([char, weight]) => [
+        char,
+        { correct: weight.historicalCorrect, wrong: weight.historicalWrong },
+      ]),
+    ),
+  });
+
+  /**
+   * Replace the persisted (historical) weights from a synced snapshot. Only the
+   * all-time correct/wrong counts are overwritten; session-scoped state is left
+   * intact. Persists the result so it survives a reload.
+   */
+  const importSyncData = async (payload: unknown): Promise<void> => {
+    const stored = payload as StoredWeights | LegacyStoredWeights | null;
+    if (!stored || typeof stored !== 'object' || !stored.weights) return;
+
+    Object.entries(stored.weights).forEach(([char, raw]) => {
+      const correct = Math.max(0, raw?.correct ?? 0);
+      const wrong = Math.max(0, raw?.wrong ?? 0);
+      const existing = characterWeights.get(char) ?? createEmptyWeight();
+      characterWeights.set(char, {
+        ...existing,
+        historicalCorrect: correct,
+        historicalWrong: wrong,
+      });
+    });
+
+    isLoaded = true;
+    await persistHistorical();
+  };
+
+  /** Subscribe to historical-weight changes (for progress sync). */
+  const subscribe = (listener: () => void): (() => void) => {
+    syncListeners.add(listener);
+    return () => {
+      syncListeners.delete(listener);
+    };
+  };
+
+  /**
    * Start or switch to a new session token.
    * This resets only session-scoped adaptation signals and keeps historical stats.
    */
@@ -568,6 +642,9 @@ export function createAdaptiveSelector(storageKey?: string) {
     startSession,
     registerQuestionFormatResult,
     getPreferredLockedFormat,
+    exportSyncData,
+    importSyncData,
+    subscribe,
   };
 }
 
