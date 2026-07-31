@@ -19,13 +19,36 @@ export const evaluateKanaAdaptivePositions = ({
   if (!normalizedInput) return results;
 
   if (isReverse) {
-    const expectedChars = answerParts.join('');
-    const actualChars = normalizedInput;
+    // Walk the input with a cursor rather than indexing character-by-character.
+    // Two reasons: a romaji prompt accepts more than one kana (か/カ are both
+    // 'ka'), and a single kana can be two characters (きゃ), which position
+    // indexing mis-aligned. Getting this wrong feeds the adaptive selector false
+    // "wrong" results and skews what the learner is shown next.
+    const input = normalizedInput.normalize('NFC');
+    let cursor = 0;
+
     for (let i = 0; i < promptChars.length; i++) {
-      const expected = expectedChars[i] ?? '';
-      const actual = actualChars[i] ?? '';
-      results[i] = expected.length > 0 && expected === actual;
+      const primary = (answerParts[i] ?? '').normalize('NFC');
+      const alternatives = (altRomanjiMap.get(promptChars[i]) ?? []).map(alt =>
+        alt.normalize('NFC'),
+      );
+      const options = Array.from(new Set([primary, ...alternatives]))
+        .filter(Boolean)
+        .sort((a, b) => b.length - a.length);
+
+      const remaining = input.slice(cursor);
+      const matched = options.find(option => remaining.startsWith(option));
+
+      if (matched) {
+        results[i] = true;
+        cursor += matched.length;
+        continue;
+      }
+
+      results[i] = false;
+      cursor += primary.length;
     }
+
     return results;
   }
 

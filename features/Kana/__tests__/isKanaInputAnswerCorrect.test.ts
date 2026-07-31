@@ -231,4 +231,86 @@ describe('isKanaInputAnswerCorrect', () => {
       }),
     ).toBe(true); // resolved via legacy fallback: altRomanjiMap.get('し') = ['si']
   });
+
+  // Reverse mode (romaji → kana). A romaji prompt does not identify one kana:
+  // 'ka' is か and カ, 'ji' is じ and ぢ. Previously only the last-registered
+  // kana was accepted, so the other — equally correct — answer was marked wrong.
+  describe('reverse mode accepts every kana sharing the prompted romaji', () => {
+    // romaji → all selected kana with that romaji
+    const reverseAltMap = new Map<string, string[]>([
+      ['ka', ['か', 'カ']],
+      ['ji', ['じ', 'ぢ']],
+      ['shi', ['し', 'シ']],
+    ]);
+
+    it('accepts the hiragana when the stored answer is the katakana', () => {
+      expect(
+        isKanaInputAnswerCorrect({
+          inputValue: 'か',
+          correctChar: 'ka',
+          targetChar: 'カ',
+          isReverse: true,
+          altRomanjiMap: reverseAltMap,
+          promptParts: ['ka'],
+          answerParts: ['カ'],
+        }),
+      ).toBe(true);
+    });
+
+    it('still accepts the stored answer itself', () => {
+      expect(
+        isKanaInputAnswerCorrect({
+          inputValue: 'カ',
+          correctChar: 'ka',
+          targetChar: 'カ',
+          isReverse: true,
+          altRomanjiMap: reverseAltMap,
+          promptParts: ['ka'],
+          answerParts: ['カ'],
+        }),
+      ).toBe(true);
+    });
+
+    it('accepts a same-script homophone (ぢ for ji)', () => {
+      expect(
+        isKanaInputAnswerCorrect({
+          inputValue: 'ぢ',
+          correctChar: 'ji',
+          targetChar: 'じ',
+          isReverse: true,
+          altRomanjiMap: reverseAltMap,
+          promptParts: ['ji'],
+          answerParts: ['じ'],
+        }),
+      ).toBe(true);
+    });
+
+    it('accepts a mixed-script multi-part answer', () => {
+      expect(
+        isKanaInputAnswerCorrect({
+          inputValue: 'かシ',
+          correctChar: 'kashi',
+          targetChar: 'カし',
+          isReverse: true,
+          altRomanjiMap: reverseAltMap,
+          promptParts: ['ka', 'shi'],
+          answerParts: ['カ', 'し'],
+        }),
+      ).toBe(true);
+    });
+
+    it('still rejects a kana that does not match the prompt', () => {
+      expect(
+        isKanaInputAnswerCorrect({
+          inputValue: 'き',
+          correctChar: 'ka',
+          targetChar: 'カ',
+          isReverse: true,
+          altRomanjiMap: reverseAltMap,
+          promptParts: ['ka'],
+          answerParts: ['カ'],
+        }),
+      ).toBe(false);
+    });
+  });
 });

@@ -4,7 +4,11 @@ import { kana } from '@/features/Kana/data/kana';
 import useKanaStore from '@/features/Kana/store/useKanaStore';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import { useClick, useCorrect, useError } from '@/shared/hooks/generic/useAudio';
+import {
+  useClick,
+  useCorrect,
+  useError,
+} from '@/shared/hooks/generic/useAudio';
 // import GameIntel from '@/shared/ui-composite/Game/GameIntel';
 import { useStatsStore } from '@/features/Progress';
 import { useShallow } from 'zustand/react/shallow';
@@ -127,6 +131,29 @@ const InputGame = ({ isHidden, isReverse = false }: InputGameProps) => {
     return map;
   }, [kanaGroupIndices]);
 
+  // Reverse mode (romaji → kana): romaji are NOT unique across the selection —
+  // か/カ are both 'ka', じ/ぢ are both 'ji'. Keying a plain object by romaji
+  // silently keeps only the last kana (126 unique romaji for 256 kana), so the
+  // other perfectly correct kana was marked wrong. Collect them all instead.
+  const reverseKanaAltMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (!isReverse) return map;
+    selectedRomaji.forEach((romaji, i) => {
+      const kanaChar = selectedKana[i];
+      if (!kanaChar) return;
+      const existing = map.get(romaji);
+      if (existing) {
+        if (!existing.includes(kanaChar)) existing.push(kanaChar);
+      } else {
+        map.set(romaji, [kanaChar]);
+      }
+    });
+    return map;
+  }, [isReverse, selectedRomaji, selectedKana]);
+
+  /** Alternatives for the active mode: kana → romaji, or romaji → kana. */
+  const answerAltMap = isReverse ? reverseKanaAltMap : altRomanjiMap;
+
   // Create mapping pairs based on mode
   const selectedPairs = useMemo(
     () =>
@@ -141,7 +168,12 @@ const InputGame = ({ isHidden, isReverse = false }: InputGameProps) => {
   const buildTargetPair = useCallback(() => {
     const sourceArray = isReverse ? selectedRomaji : selectedKana;
     if (sourceArray.length === 0) {
-      return { correctChar: '', targetChar: '', promptParts: [], answerParts: [] };
+      return {
+        correctChar: '',
+        targetChar: '',
+        promptParts: [],
+        answerParts: [],
+      };
     }
 
     const used = new Set<string>();
@@ -180,13 +212,17 @@ const InputGame = ({ isHidden, isReverse = false }: InputGameProps) => {
   const answerParts = pairData.answerParts;
   const pauseTimer = useCallback(() => {
     if (answerStartTimeRef.current !== null) {
-      elapsedTimeMsRef.current += performance.now() - answerStartTimeRef.current;
+      elapsedTimeMsRef.current +=
+        performance.now() - answerStartTimeRef.current;
       answerStartTimeRef.current = null;
     }
   }, []);
   const getElapsedTimeMs = useCallback(() => {
     if (answerStartTimeRef.current !== null) {
-      return elapsedTimeMsRef.current + (performance.now() - answerStartTimeRef.current);
+      return (
+        elapsedTimeMsRef.current +
+        (performance.now() - answerStartTimeRef.current)
+      );
     }
     return elapsedTimeMsRef.current;
   }, []);
@@ -220,10 +256,7 @@ const InputGame = ({ isHidden, isReverse = false }: InputGameProps) => {
       const isSpace = event.code === 'Space' || event.key === ' ';
       const isContinueShortcut = isEnter || isSpace;
 
-      if (
-        isContinueShortcut &&
-        shouldSuppressContinueKeyboardShortcut()
-      ) {
+      if (isContinueShortcut && shouldSuppressContinueKeyboardShortcut()) {
         event.preventDefault();
         return;
       }
@@ -278,7 +311,7 @@ const InputGame = ({ isHidden, isReverse = false }: InputGameProps) => {
       correctChar,
       targetChar,
       isReverse,
-      altRomanjiMap,
+      altRomanjiMap: answerAltMap,
       promptParts,
       answerParts,
     });
@@ -354,7 +387,7 @@ const InputGame = ({ isHidden, isReverse = false }: InputGameProps) => {
       answerParts,
       inputValue: wrongInput,
       isReverse,
-      altRomanjiMap,
+      altRomanjiMap: answerAltMap,
     });
     promptParts.forEach((char, index) => {
       adaptiveSelector.updateCharacterWeight(char, positionResults[index]);
@@ -476,4 +509,3 @@ const InputGame = ({ isHidden, isReverse = false }: InputGameProps) => {
 };
 
 export default InputGame;
-

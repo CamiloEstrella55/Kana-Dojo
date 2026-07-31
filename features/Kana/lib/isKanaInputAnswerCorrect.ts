@@ -3,16 +3,25 @@ interface KanaInputAnswerOptions {
   correctChar: string;
   targetChar: string;
   isReverse: boolean;
+  /**
+   * Accepted alternatives keyed by prompt part.
+   *
+   * Normal mode: kana → alternative romaji (e.g. 'し' → ['si']).
+   * Reverse mode: romaji → every selected kana sharing it (e.g. 'ka' → ['か',
+   * 'カ']), since romaji are not unique across the two scripts.
+   */
   altRomanjiMap: Map<string, string[]>;
   /**
-   * The individual kana parts that make up the prompt (e.g. ['し', 'ぶ']).
-   * Required for correct alternative-romanji lookup on multi-character prompts.
+   * The individual parts that make up the prompt — kana in normal mode
+   * (e.g. ['し', 'ぶ']), romaji in reverse mode (e.g. ['ka']).
+   * Required for correct alternative lookup on multi-character prompts.
    * When omitted the function falls back to the legacy single-key lookup.
    */
   promptParts?: string[];
   /**
-   * The primary romaji for each prompt part in the same order as promptParts
-   * (e.g. ['shi', 'bu']). Required alongside promptParts.
+   * The primary answer for each prompt part in the same order as promptParts —
+   * romaji in normal mode (e.g. ['shi', 'bu']), kana in reverse mode.
+   * Required alongside promptParts.
    */
   answerParts?: string[];
 }
@@ -53,8 +62,28 @@ export const isKanaInputAnswerCorrect = ({
   if (!normalizedInput) return false;
 
   if (isReverse) {
-    // Reverse mode: user types the kana character itself.
-    return normalizedInput === targetChar.normalize('NFC');
+    // Reverse mode: the user types the kana itself. A romaji prompt does not
+    // identify a single kana — 'ka' is both か and カ, 'ji' is じ and ぢ — so
+    // every selected kana sharing that romaji has to be accepted. Comparing
+    // against one stored answer marked the other, equally correct, kana wrong.
+    const target = targetChar.normalize('NFC');
+    if (normalizedInput === target) return true;
+
+    if (
+      promptParts &&
+      answerParts &&
+      promptParts.length > 0 &&
+      promptParts.length === answerParts.length
+    ) {
+      const validAnswers = buildAltCombinations(
+        promptParts,
+        answerParts,
+        altRomanjiMap,
+      );
+      return validAnswers.some(ans => normalizedInput === ans.normalize('NFC'));
+    }
+
+    return false;
   }
 
   // Normal mode: user types romaji. Compare case- and Unicode-insensitively.
@@ -77,7 +106,11 @@ export const isKanaInputAnswerCorrect = ({
     promptParts.length > 0 &&
     promptParts.length === answerParts.length
   ) {
-    const validAnswers = buildAltCombinations(promptParts, answerParts, altRomanjiMap);
+    const validAnswers = buildAltCombinations(
+      promptParts,
+      answerParts,
+      altRomanjiMap,
+    );
     return validAnswers.some(
       ans => lowerInput === ans.toLowerCase().normalize('NFC'),
     );
@@ -86,6 +119,8 @@ export const isKanaInputAnswerCorrect = ({
   // Legacy single-character fallback (promptParts not provided).
   const alternatives = altRomanjiMap.get(correctChar);
   return alternatives
-    ? alternatives.some(alt => lowerInput === alt.toLowerCase().normalize('NFC'))
+    ? alternatives.some(
+        alt => lowerInput === alt.toLowerCase().normalize('NFC'),
+      )
     : false;
 };
