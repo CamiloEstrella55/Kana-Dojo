@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 interface IKanaState {
   selectedGameModeKana: string;
@@ -59,26 +60,52 @@ const toggleNumbers = (arr: number[], input: number[]): number[] => {
   return changed ? next : arr;
 };
 
-const useKanaStore = create<IKanaState>(set => ({
-  selectedGameModeKana: 'Pick',
-  kanaGroupIndices: [],
-  setSelectedGameModeKana: gameMode => set({ selectedGameModeKana: gameMode }),
+/**
+ * The character selection must survive a document load: in the native bundle
+ * every in-app navigation is a real page load (see NativeNavigation), which
+ * destroys in-memory state. Without persistence the training screen opens with
+ * an empty selection and renders nothing at all — a blank game.
+ *
+ * sessionStorage is the right scope: it survives navigation within the running
+ * app but still clears when the app is closed, matching the original in-memory
+ * behaviour (a selection is per-session, not remembered forever).
+ */
+const useKanaStore = create<IKanaState>()(
+  persist(
+    set => ({
+      selectedGameModeKana: 'Pick',
+      kanaGroupIndices: [],
+      setSelectedGameModeKana: gameMode =>
+        set({ selectedGameModeKana: gameMode }),
 
-  addKanaGroupIndex: kanaGroupIndex =>
-    set(state => {
-      const next = toggleNumber(state.kanaGroupIndices, kanaGroupIndex);
-      return sameArray(next, state.kanaGroupIndices)
-        ? state
-        : { kanaGroupIndices: next };
-    }),
+      addKanaGroupIndex: kanaGroupIndex =>
+        set(state => {
+          const next = toggleNumber(state.kanaGroupIndices, kanaGroupIndex);
+          return sameArray(next, state.kanaGroupIndices)
+            ? state
+            : { kanaGroupIndices: next };
+        }),
 
-  addKanaGroupIndices: kanaGroupIndices =>
-    set(state => {
-      const next = toggleNumbers(state.kanaGroupIndices, kanaGroupIndices);
-      return sameArray(next, state.kanaGroupIndices)
-        ? state
-        : { kanaGroupIndices: next };
+      addKanaGroupIndices: kanaGroupIndices =>
+        set(state => {
+          const next = toggleNumbers(state.kanaGroupIndices, kanaGroupIndices);
+          return sameArray(next, state.kanaGroupIndices)
+            ? state
+            : { kanaGroupIndices: next };
+        }),
     }),
-}));
+    {
+      name: 'kanadojo-kana-selection',
+      storage:
+        typeof window !== 'undefined'
+          ? createJSONStorage(() => sessionStorage)
+          : undefined,
+      partialize: state => ({
+        selectedGameModeKana: state.selectedGameModeKana,
+        kanaGroupIndices: state.kanaGroupIndices,
+      }),
+    },
+  ),
+);
 
 export default useKanaStore;

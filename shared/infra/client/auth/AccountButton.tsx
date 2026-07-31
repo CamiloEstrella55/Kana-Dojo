@@ -12,16 +12,28 @@ import { useAuthFeedback } from './useAuthFeedback';
  * Signed out → a labelled "Sign in" pill so it's easy to find.
  * Signed in  → a compact avatar-style button.
  */
-export default function AccountButton({
-  className,
-}: {
-  className?: string;
-}) {
+export default function AccountButton({ className }: { className?: string }) {
   const { configured, user, loading } = useAuth();
   const openModal = useAuthModalStore(s => s.openModal);
   const feedback = useAuthFeedback();
 
   if (!configured) return null;
+
+  // Until the session has resolved we do not know whether anyone is signed in.
+  // Rendering the signed-out label here would claim "Sign in" to a user who is
+  // actually signed in — the state simply is not known yet. Hold a neutral,
+  // same-sized placeholder so the header does not shift when it resolves.
+  if (loading) {
+    return (
+      <span
+        aria-hidden
+        className={className ?? clsxPill(false)}
+        style={{ opacity: 0.5 }}
+      >
+        <UserRound size={18} />
+      </span>
+    );
+  }
 
   const signedIn = Boolean(user);
   const Icon = signedIn ? UserRoundCheck : UserRound;
@@ -34,7 +46,7 @@ export default function AccountButton({
 
   return (
     <button
-      type="button"
+      type='button'
       aria-label={label}
       title={label}
       disabled={loading}
@@ -42,17 +54,14 @@ export default function AccountButton({
         feedback.tap();
         openModal(signedIn ? 'account' : 'signin');
       }}
-      className={
-        className ??
-        clsxPill(signedIn)
-      }
+      className={className ?? clsxPill(signedIn)}
     >
       {signedIn && initial ? (
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-(--main-color) text-xs font-bold text-(--background-color) uppercase">
+        <span className='grid h-6 w-6 place-items-center rounded-full bg-(--main-color) text-xs font-bold text-(--background-color) uppercase'>
           {initial}
         </span>
       ) : (
-        <Icon className="h-[18px] w-[18px]" aria-hidden />
+        <Icon className='h-[18px] w-[18px]' aria-hidden />
       )}
       {!signedIn && <span>{label}</span>}
     </button>

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { IKanjiObj } from '@/entities/kanji';
 
 export type { IKanjiObj } from '@/entities/kanji';
@@ -91,57 +92,80 @@ const toggleKanjis = (
   return changed ? next : array;
 };
 
-const useKanjiStore = create<IKanjiState>(set => ({
-  selectedGameModeKanji: 'Pick',
-  selectedKanjiObjs: [],
-  selectedKanjiCollection: 'n5',
-  selectedKanjiSets: [],
-  selectedSubunitByUnit: {},
+/**
+ * Persisted for the same reason as the kana selection: native navigation is a
+ * full document load, so an in-memory selection would be empty by the time the
+ * training screen mounts. sessionStorage keeps it for the running app only.
+ */
+const useKanjiStore = create<IKanjiState>()(
+  persist(
+    set => ({
+      selectedGameModeKanji: 'Pick',
+      selectedKanjiObjs: [],
+      selectedKanjiCollection: 'n5',
+      selectedKanjiSets: [],
+      selectedSubunitByUnit: {},
 
-  setSelectedGameModeKanji: gameMode =>
-    set({ selectedGameModeKanji: gameMode }),
+      setSelectedGameModeKanji: gameMode =>
+        set({ selectedGameModeKanji: gameMode }),
 
-  addKanjiObj: kanjiObj =>
-    set(state => {
-      const next = toggleKanji(state.selectedKanjiObjs, kanjiObj);
-      return sameKanjiArray(next, state.selectedKanjiObjs)
-        ? state
-        : { selectedKanjiObjs: next };
+      addKanjiObj: kanjiObj =>
+        set(state => {
+          const next = toggleKanji(state.selectedKanjiObjs, kanjiObj);
+          return sameKanjiArray(next, state.selectedKanjiObjs)
+            ? state
+            : { selectedKanjiObjs: next };
+        }),
+
+      addKanjiObjs: kanjiObjects =>
+        set(state => {
+          const next = toggleKanjis(state.selectedKanjiObjs, kanjiObjects);
+          return sameKanjiArray(next, state.selectedKanjiObjs)
+            ? state
+            : { selectedKanjiObjs: next };
+        }),
+
+      clearKanjiObjs: () => set({ selectedKanjiObjs: [] }),
+
+      setSelectedKanjiCollection: collection =>
+        set({ selectedKanjiCollection: collection }),
+
+      setSelectedKanjiSets: sets => set({ selectedKanjiSets: sets }),
+
+      clearKanjiSets: () => set({ selectedKanjiSets: [] }),
+
+      setSelectedSubunitForUnit: (unit, subunitId) =>
+        set(state => ({
+          selectedSubunitByUnit: {
+            ...state.selectedSubunitByUnit,
+            [unit]: subunitId,
+          },
+        })),
+
+      collapsedRowsByUnit: {},
+      setCollapsedRowsForUnit: (unit, rows) =>
+        set(state => ({
+          collapsedRowsByUnit: {
+            ...state.collapsedRowsByUnit,
+            [unit]: rows,
+          },
+        })),
     }),
-
-  addKanjiObjs: kanjiObjects =>
-    set(state => {
-      const next = toggleKanjis(state.selectedKanjiObjs, kanjiObjects);
-      return sameKanjiArray(next, state.selectedKanjiObjs)
-        ? state
-        : { selectedKanjiObjs: next };
-    }),
-
-  clearKanjiObjs: () => set({ selectedKanjiObjs: [] }),
-
-  setSelectedKanjiCollection: collection =>
-    set({ selectedKanjiCollection: collection }),
-
-  setSelectedKanjiSets: sets => set({ selectedKanjiSets: sets }),
-
-  clearKanjiSets: () => set({ selectedKanjiSets: [] }),
-
-  setSelectedSubunitForUnit: (unit, subunitId) =>
-    set(state => ({
-      selectedSubunitByUnit: {
-        ...state.selectedSubunitByUnit,
-        [unit]: subunitId,
-      },
-    })),
-
-  collapsedRowsByUnit: {},
-  setCollapsedRowsForUnit: (unit, rows) =>
-    set(state => ({
-      collapsedRowsByUnit: {
-        ...state.collapsedRowsByUnit,
-        [unit]: rows,
-      },
-    })),
-}));
+    {
+      name: 'kanadojo-kanji-selection',
+      storage:
+        typeof window !== 'undefined'
+          ? createJSONStorage(() => sessionStorage)
+          : undefined,
+      partialize: state => ({
+        selectedGameModeKanji: state.selectedGameModeKanji,
+        selectedKanjiObjs: state.selectedKanjiObjs,
+        selectedKanjiCollection: state.selectedKanjiCollection,
+        selectedKanjiSets: state.selectedKanjiSets,
+        selectedSubunitByUnit: state.selectedSubunitByUnit,
+      }),
+    },
+  ),
+);
 
 export default useKanjiStore;

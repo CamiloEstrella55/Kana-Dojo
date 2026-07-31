@@ -402,21 +402,41 @@ export function applyTheme(themeId: string) {
   root.style.setProperty('--main-color', effectiveTheme.mainColor);
   root.style.setProperty('--main-color-accent', effectiveTheme.mainColorAccent);
 
-  // Cache the resolved background so the anti-flash inline script (in the root
-  // layout <head>) can paint the correct theme color on the very next launch,
-  // before React hydrates. Prevents the white flash on the native app.
-  try {
-    localStorage.setItem('kd-theme-bg', effectiveTheme.backgroundColor);
-  } catch {
-    /* storage unavailable — the CSS #0b0b0f fallback still applies */
-  }
-
   if (effectiveTheme.secondaryColor) {
     root.style.setProperty('--secondary-color', effectiveTheme.secondaryColor);
     root.style.setProperty(
       '--secondary-color-accent',
       effectiveTheme.secondaryColorAccent,
     );
+  }
+
+  // Cache the whole resolved palette so the anti-flash inline script (in the
+  // root layout <head>) can restore it before React hydrates.
+  //
+  // Caching only the background is not enough: every surface styled with
+  // --card-color / --main-color / --border-color would still render with those
+  // variables undefined, i.e. unstyled light boxes on a dark theme. In the
+  // native bundle each in-app navigation is a real document load, so that gap
+  // was visible as a light "contrast" flash on every page switch.
+  try {
+    const cachedVars: Record<string, string> = {
+      '--background-color': effectiveTheme.backgroundColor,
+      '--card-color': effectiveTheme.cardColor,
+      '--border-color': effectiveTheme.borderColor,
+      '--main-color': effectiveTheme.mainColor,
+      '--main-color-accent': effectiveTheme.mainColorAccent,
+    };
+    if (effectiveTheme.secondaryColor) {
+      cachedVars['--secondary-color'] = effectiveTheme.secondaryColor;
+      cachedVars['--secondary-color-accent'] =
+        effectiveTheme.secondaryColorAccent;
+    }
+    localStorage.setItem('kd-theme-vars', JSON.stringify(cachedVars));
+    localStorage.setItem('kd-theme-id', resolvedThemeId);
+    // Kept for backwards compatibility with an older inline script.
+    localStorage.setItem('kd-theme-bg', effectiveTheme.backgroundColor);
+  } catch {
+    /* storage unavailable — the CSS #0b0b0f fallback still applies */
   }
 
   root.setAttribute('data-theme', resolvedThemeId);

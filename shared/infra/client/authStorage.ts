@@ -31,7 +31,56 @@ const memoryBackend: AuthStorageBackend = {
   },
 };
 
+/**
+ * Capacitor Preferences reached through the bridge that is already on `window`,
+ * rather than a dynamic `import()`.
+ *
+ * This must be resolvable *synchronously*: the Supabase client starts reading
+ * the persisted session as soon as it is constructed, which happens before the
+ * async native bootstrap can install a backend. Resolving the native store
+ * lazily-but-synchronously means the very first read already hits the same
+ * storage the session was written to. Otherwise that first read falls back to
+ * localStorage, finds nothing, and the user is treated as signed out on every
+ * document load — which, now that in-app navigation is a real page load, means
+ * the session appears to vanish constantly and sync never runs.
+ */
+interface CapacitorPreferencesPlugin {
+  get: (options: { key: string }) => Promise<{ value: string | null }>;
+  set: (options: { key: string; value: string }) => Promise<void>;
+  remove: (options: { key: string }) => Promise<void>;
+}
+
+function resolveNativePreferences(): AuthStorageBackend | null {
+  if (typeof window === 'undefined') return null;
+  const cap = (
+    window as unknown as {
+      Capacitor?: {
+        isNativePlatform?: () => boolean;
+        Plugins?: { Preferences?: CapacitorPreferencesPlugin };
+      };
+    }
+  ).Capacitor;
+
+  if (!cap?.isNativePlatform?.()) return null;
+  const preferences = cap.Plugins?.Preferences;
+  if (!preferences) return null;
+
+  return {
+    getItem: async key => (await preferences.get({ key })).value,
+    setItem: async (key, value) => {
+      await preferences.set({ key, value });
+    },
+    removeItem: async key => {
+      await preferences.remove({ key });
+    },
+  };
+}
+
 function resolveDefaultBackend(): AuthStorageBackend {
+  // Prefer native secure storage when running inside the Capacitor WebView.
+  const native = resolveNativePreferences();
+  if (native) return native;
+
   if (typeof window === 'undefined' || !window.localStorage) {
     return memoryBackend;
   }

@@ -192,6 +192,36 @@ function schedulePush(adapter: ProgressSyncAdapter): void {
   );
 }
 
+/**
+ * Push every pending (debounced) change immediately.
+ *
+ * In the native bundle each in-app navigation is a real document load, which
+ * destroys the page — and with it any pending push timer. Finishing a lesson
+ * and leaving the screen within the debounce window would otherwise drop the
+ * write entirely, so progress silently never reached Supabase. Flush on the
+ * way out (page hide / app backgrounded) instead.
+ *
+ * `keepalive` is not available through the Supabase client, so this is
+ * best-effort; the next launch still reconciles from the persisted local
+ * mutation timestamps, which is what guarantees eventual consistency.
+ */
+function flushPendingPushes(): void {
+  if (pushTimers.size === 0) return;
+  const supabase = getSupabaseClientOrNull();
+  const pending = Array.from(pushTimers.keys());
+  for (const timer of pushTimers.values()) clearTimeout(timer);
+  pushTimers.clear();
+  if (!supabase) return;
+
+  for (const key of pending) {
+    const adapter = adapterByKey(key);
+    if (!adapter) continue;
+    pushAdapter(supabase, adapter).catch(err => {
+      console.warn(`[sync] flush push failed for ${key}:`, err);
+    });
+  }
+}
+
 async function handleRemoteRow(row: RemoteRow): Promise<void> {
   const adapter = adapterByKey(row.store_key);
   if (!adapter) return;
@@ -261,15 +291,24 @@ export async function startAutoSync(): Promise<() => void> {
       .subscribe();
   }
 
-  // Opportunistic re-sync when the app regains focus / connectivity.
+  // Opportunistic re-sync when the app regains focus / connectivity, and a
+  // flush when it goes away (navigation is a full page load on native, so a
+  // pending debounced push would otherwise die with the page).
   const onFocus = () => {
     syncNow().catch(err => console.warn('[sync] refresh failed:', err));
   };
-  window.addEventListener('online', onFocus);
-  document.addEventListener('visibilitychange', () => {
+  const onVisibilityChange = () => {
     if (document.visibilityState === 'visible') onFocus();
+    else flushPendingPushes();
+  };
+  window.addEventListener('online', onFocus);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('pagehide', flushPendingPushes);
+  unsubscribers.push(() => {
+    window.removeEventListener('online', onFocus);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('pagehide', flushPendingPushes);
   });
-  unsubscribers.push(() => window.removeEventListener('online', onFocus));
 
   // Listeners are live either way, but let the caller show a failed state.
   if (initialSyncError) throw initialSyncError;

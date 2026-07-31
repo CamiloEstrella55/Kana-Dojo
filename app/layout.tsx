@@ -160,7 +160,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             chrome color via CSS when nothing is cached yet. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var b=localStorage.getItem('kd-theme-bg')||'#0b0b0f';var r=document.documentElement;r.style.setProperty('--background-color',b);r.style.backgroundColor=b;}catch(e){}`,
+            __html: `try{var r=document.documentElement;var v=null;try{v=JSON.parse(localStorage.getItem('kd-theme-vars'))}catch(e){}if(v&&typeof v==='object'){for(var k in v){if(k.indexOf('--')===0&&typeof v[k]==='string')r.style.setProperty(k,v[k])}}var b=(v&&v['--background-color'])||localStorage.getItem('kd-theme-bg')||'#0b0b0f';r.style.setProperty('--background-color',b);r.style.backgroundColor=b;var t=localStorage.getItem('kd-theme-id');if(t)r.setAttribute('data-theme',t);}catch(e){}`,
           }}
         />
         <StructuredData data={kanaDojoSchema} />
