@@ -7,18 +7,13 @@ import { Flame } from 'lucide-react';
 import { cn } from '@/shared/utils/utils';
 import { useThemePreferences } from '@/features/Preferences';
 import { useClick } from '@/shared/hooks/generic/useAudio';
-import AdSenseDisplay from '@/shared/ui-composite/Ads/AdSenseDisplay';
 import { GameBottomBar } from '@/shared/ui-composite/Game/GameBottomBar';
 import BottomBar from '@/shared/ui-composite/layout/BottomBar';
 import { suppressContinueKeyboardShortcuts } from '@/shared/utils/game/continueShortcutGuard';
 import { ENABLE_EVERY_QUESTION_AD_OVERLAY } from '@/shared/utils/game/streakMilestones';
 
-const STREAK_MILESTONE_AD_SLOT = '2642983933';
 const ENABLE_STREAK_MILESTONE_DECORATIONS = true;
 const ENABLE_STREAK_MILESTONE_KEYBOARD_SHORTCUTS = false;
-const isStreakMilestoneAdEnabled =
-  process.env.NODE_ENV === 'production' &&
-  process.env.NEXT_PUBLIC_VERCEL_ENV === 'production';
 
 const Decorations = lazy(
   () => import('@/shared/ui-composite/Decorations/Decorations'),
@@ -212,18 +207,6 @@ export default function StreakMilestoneOverlay({
               {message}
             </motion.p>
 */}
-            {isStreakMilestoneAdEnabled && (
-              <div className='flex w-full max-w-3xl flex-col items-center gap-2'>
-                {!ENABLE_EVERY_QUESTION_AD_OVERLAY && (
-                  <p className='text-xs font-medium tracking-wide text-(--secondary-color) uppercase'>
-                    Advertisement
-                  </p>
-                )}
-                <div className='w-full'>
-                  <AdSenseDisplay slot={STREAK_MILESTONE_AD_SLOT} />
-                </div>
-              </div>
-            )}
           </motion.div>
           <GameBottomBar
             state='check'

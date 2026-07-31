@@ -122,6 +122,12 @@ export default function ClientLayout({
 
   const pathname = usePathname();
 
+  // The account button is chrome for the menu/tab screens; inside a session it
+  // floats over the game UI, so it is hidden on the training routes.
+  const isTrainingRoute = /\/(train|blitz|gauntlet|zen)(\/|$)/.test(
+    pathname ?? '',
+  );
+
   useEffect(() => {
     startTransition(() => {
       applyTheme(effectiveTheme); // This now sets both CSS variables AND data-theme attribute
@@ -260,15 +266,17 @@ export default function ClientLayout({
         <GlobalAudioController />
         <ServiceWorkerRegistration />
         <VisualEffectsRenderer />
-        <div
-          className='fixed top-0 right-0 z-40 p-2'
-          style={{
-            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)',
-            paddingRight: 'calc(env(safe-area-inset-right, 0px) + 0.5rem)',
-          }}
-        >
-          <AccountButton />
-        </div>
+        {!isTrainingRoute && (
+          <div
+            className='fixed top-0 right-0 z-40 p-2'
+            style={{
+              paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)',
+              paddingRight: 'calc(env(safe-area-inset-right, 0px) + 0.5rem)',
+            }}
+          >
+            <AccountButton />
+          </div>
+        )}
         {children}
         <ScrollRestoration />
         <WelcomeModal />

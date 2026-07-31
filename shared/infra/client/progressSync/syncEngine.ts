@@ -1,9 +1,6 @@
 'use client';
 
-import type {
-  RealtimeChannel,
-  SupabaseClient,
-} from '@supabase/supabase-js';
+import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClientOrNull } from '../supabaseClient';
 import { SYNC_ADAPTERS } from './adapters';
 import { setLocalMutationMs } from './syncMeta';
@@ -62,8 +59,10 @@ async function pushAdapter(
   });
 
   if (error) {
-    console.warn(`[sync] push failed for ${adapter.key}:`, error.message);
-    return;
+    // Surfaced to the caller so a failed "Sync now" reports an error instead of
+    // silently claiming success (e.g. when the sync_progress migration has not
+    // been applied to the Supabase project).
+    throw new Error(`push failed for ${adapter.key}: ${error.message}`);
   }
 
   const row = Array.isArray(data) ? (data[0] as RowResult | undefined) : null;
@@ -151,8 +150,7 @@ export async function syncNow(): Promise<void> {
     .from('user_progress')
     .select('store_key,data,updated_at_ms');
   if (error) {
-    console.warn('[sync] pull failed:', error.message);
-    return;
+    throw new Error(`pull failed: ${error.message}`);
   }
 
   const remoteByKey = new Map<string, RemoteRow>();
@@ -160,12 +158,20 @@ export async function syncNow(): Promise<void> {
     remoteByKey.set(row.store_key, row);
   }
 
+  // Reconcile every store even if one fails, then report if any did — a silent
+  // partial sync is how progress goes missing without anyone noticing.
+  const failures: string[] = [];
   for (const adapter of SYNC_ADAPTERS) {
     try {
       await reconcile(supabase, adapter, remoteByKey.get(adapter.key));
     } catch (err) {
       console.warn(`[sync] reconcile failed for ${adapter.key}:`, err);
+      failures.push(adapter.key);
     }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`sync failed for: ${failures.join(', ')}`);
   }
 }
 
@@ -177,7 +183,11 @@ function schedulePush(adapter: ProgressSyncAdapter): void {
     setTimeout(() => {
       pushTimers.delete(adapter.key);
       const supabase = getSupabaseClientOrNull();
-      if (supabase) void pushAdapter(supabase, adapter);
+      if (supabase) {
+        pushAdapter(supabase, adapter).catch(err => {
+          console.warn(`[sync] background push failed:`, err);
+        });
+      }
     }, PUSH_DEBOUNCE_MS),
   );
 }
@@ -186,7 +196,10 @@ async function handleRemoteRow(row: RemoteRow): Promise<void> {
   const adapter = adapterByKey(row.store_key);
   if (!adapter) return;
   const local = await adapter.read();
-  const remote: SyncPayload = { data: row.data, updatedAtMs: row.updated_at_ms };
+  const remote: SyncPayload = {
+    data: row.data,
+    updatedAtMs: row.updated_at_ms,
+  };
   if (!local || remote.updatedAtMs > local.updatedAtMs) {
     if (adapter.merge && local) {
       await applyRemote(adapter, adapter.merge(local, remote));
@@ -205,7 +218,15 @@ export async function startAutoSync(): Promise<() => void> {
   if (!supabase || running) return () => {};
   running = true;
 
-  await syncNow();
+  // A failed first reconcile must not prevent the live listeners below from
+  // being wired up; the next focus/online event retries it.
+  let initialSyncError: unknown = null;
+  try {
+    await syncNow();
+  } catch (err) {
+    initialSyncError = err;
+    console.warn('[sync] initial reconcile failed:', err);
+  }
 
   // Push local mutations.
   for (const adapter of SYNC_ADAPTERS) {
@@ -241,12 +262,17 @@ export async function startAutoSync(): Promise<() => void> {
   }
 
   // Opportunistic re-sync when the app regains focus / connectivity.
-  const onFocus = () => void syncNow();
+  const onFocus = () => {
+    syncNow().catch(err => console.warn('[sync] refresh failed:', err));
+  };
   window.addEventListener('online', onFocus);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') onFocus();
   });
   unsubscribers.push(() => window.removeEventListener('online', onFocus));
+
+  // Listeners are live either way, but let the caller show a failed state.
+  if (initialSyncError) throw initialSyncError;
 
   return stopAutoSync;
 }

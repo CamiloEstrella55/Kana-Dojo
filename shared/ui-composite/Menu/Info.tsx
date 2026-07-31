@@ -11,12 +11,6 @@ import { removeLocaleFromPath } from '@/shared/utils/pathUtils';
 import { useTranslations } from 'next-intl';
 import DevNotice from '@/shared/ui-composite/misc/DevNotice';
 import RandomFact from '@/shared/ui-composite/misc/RandomFact';
-// Temporarily disabled AdSense placement.
-// import AdSenseDisplay from '@/shared/ui-composite/Ads/AdSenseDisplay';
-// const KANA_INFO_AD_SLOT = '5772398513';
-// const isKanaInfoAdEnabled =
-//   process.env.NODE_ENV === 'production' &&
-//   process.env.NEXT_PUBLIC_VERCEL_ENV === 'production';
 
 const Info = () => {
   const pathname = usePathname();
@@ -111,16 +105,8 @@ const Info = () => {
           )}
         </motion.div>
       </div>
-      {/* {normalizedPath === '/kana' &&
-        isKanaInfoAdEnabled &&
-        KANA_INFO_AD_SLOT && (
-          <div className='mt-4 w-full'>
-            <AdSenseDisplay slot={KANA_INFO_AD_SLOT} />
-          </div>
-        )} */}
     </>
   );
 };
 
 export default Info;
-

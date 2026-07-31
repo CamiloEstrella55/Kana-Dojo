@@ -1,6 +1,48 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
+import { useRouter } from '@/core/i18n/routing';
+
+const isMobileExport = process.env.NEXT_PUBLIC_MOBILE_EXPORT === '1';
+
+/**
+ * Maps an app path onto the file the static export actually wrote.
+ *
+ * `/kana/train` → `/en/kana/train/index.html`. The locale prefix is required
+ * because the export is generated with `localePrefix: 'always'`, and the
+ * explicit `index.html` avoids the WebView's html5mode fallback (see below).
+ */
+export function toExportedPath(href: string): string {
+  const [pathAndQuery = '', hash = ''] = href.split('#');
+  const [rawPath = '', query = ''] = pathAndQuery.split('?');
+
+  let path = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+  if (!/^\/(en|es)(\/|$)/.test(path)) path = `/en${path}`;
+  if (!/\.[a-z0-9]+$/i.test(path)) {
+    path = path.endsWith('/') ? `${path}index.html` : `${path}/index.html`;
+  }
+
+  return `${path}${query ? `?${query}` : ''}${hash ? `#${hash}` : ''}`;
+}
+
+/**
+ * Navigate programmatically. Client-side routing does not commit inside the
+ * Capacitor WebView (see the note below), so the on-device bundle performs a
+ * real document load instead; on the web this is a normal router push.
+ */
+export function useAppNavigate(): (href: string) => void {
+  const router = useRouter();
+  return useCallback(
+    (href: string) => {
+      if (isMobileExport && typeof window !== 'undefined') {
+        window.location.assign(toExportedPath(href));
+        return;
+      }
+      router.push(href);
+    },
+    [router],
+  );
+}
 
 /**
  * Full-page navigation for the on-device bundle.
