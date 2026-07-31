@@ -33,6 +33,7 @@ export default function AuthModal() {
   const { open, view, openModal, setView, closeModal } = useAuthModalStore();
   const {
     configured,
+    syncError,
     user,
     syncStatus,
     signIn,
@@ -123,28 +124,32 @@ export default function AuthModal() {
         : 'Send reset link';
 
   return (
-    <Dialog open={open} onOpenChange={o => (o ? openModal(view) : closeModal())}>
-      <DialogContent className="max-w-md gap-0 rounded-2xl border-(--border-color,rgba(128,128,128,0.25)) bg-(--background-color) p-0 text-(--main-color)">
-        <div className="flex flex-col items-center gap-1 px-6 pt-7 pb-2">
+    <Dialog
+      open={open}
+      onOpenChange={o => (o ? openModal(view) : closeModal())}
+    >
+      <DialogContent className='max-w-md gap-0 rounded-2xl border-(--border-color,rgba(128,128,128,0.25)) bg-(--background-color) p-0 text-(--main-color)'>
+        <div className='flex flex-col items-center gap-1 px-6 pt-7 pb-2'>
           <div
             aria-hidden
-            className="mb-1 grid h-14 w-14 place-items-center rounded-2xl bg-(--card-color) text-2xl font-bold"
+            className='mb-1 grid h-14 w-14 place-items-center rounded-2xl bg-(--card-color) text-2xl font-bold'
           >
             仮名
           </div>
-          <DialogHeader className="items-center text-center">
-            <DialogTitle className="text-xl">{TITLES[view]}</DialogTitle>
-            <DialogDescription className="text-(--secondary-color) opacity-90">
+          <DialogHeader className='items-center text-center'>
+            <DialogTitle className='text-xl'>{TITLES[view]}</DialogTitle>
+            <DialogDescription className='text-(--secondary-color) opacity-90'>
               {DESCRIPTIONS[view]}
             </DialogDescription>
           </DialogHeader>
         </div>
 
-        <div className="px-6 pb-6">
+        <div className='px-6 pb-6'>
           {view === 'account' && user ? (
             <AccountPanel
               email={user.email ?? ''}
               syncStatus={syncStatus}
+              syncError={syncError}
               onSyncNow={() => {
                 feedback.tap();
                 void syncNow();
@@ -156,36 +161,36 @@ export default function AuthModal() {
               }}
             />
           ) : (
-            <form onSubmit={submit} className="flex flex-col gap-3">
+            <form onSubmit={submit} className='flex flex-col gap-3'>
               {view === 'signup' && (
                 <Field
-                  label="Display name (optional)"
-                  type="text"
+                  label='Display name (optional)'
+                  type='text'
                   value={displayName}
                   onChange={setDisplayName}
-                  autoComplete="nickname"
-                  placeholder="Sensei"
+                  autoComplete='nickname'
+                  placeholder='Sensei'
                 />
               )}
               <Field
-                label="Email"
-                type="email"
+                label='Email'
+                type='email'
                 value={email}
                 onChange={setEmail}
-                autoComplete="email"
-                placeholder="you@example.com"
+                autoComplete='email'
+                placeholder='you@example.com'
                 required
               />
               {view !== 'reset' && (
                 <Field
-                  label="Password"
-                  type="password"
+                  label='Password'
+                  type='password'
                   value={password}
                   onChange={setPassword}
                   autoComplete={
                     view === 'signup' ? 'new-password' : 'current-password'
                   }
-                  placeholder="••••••••"
+                  placeholder='••••••••'
                   required
                   minLength={6}
                 />
@@ -193,25 +198,25 @@ export default function AuthModal() {
 
               {error && (
                 <p
-                  className="rounded-lg bg-(--wrong-color,#ef4444)/10 px-3 py-2 text-sm text-(--wrong-color,#ef4444)"
-                  role="alert"
+                  className='rounded-lg bg-(--wrong-color,#ef4444)/10 px-3 py-2 text-sm text-(--wrong-color,#ef4444)'
+                  role='alert'
                 >
                   {error}
                 </p>
               )}
               {notice && (
                 <p
-                  className="rounded-lg bg-(--right-color,#22c55e)/10 px-3 py-2 text-sm text-(--right-color,#22c55e)"
-                  role="status"
+                  className='rounded-lg bg-(--right-color,#22c55e)/10 px-3 py-2 text-sm text-(--right-color,#22c55e)'
+                  role='status'
                 >
                   {notice}
                 </p>
               )}
 
               <Button
-                type="submit"
+                type='submit'
                 disabled={busy}
-                className="mt-1 h-11 w-full rounded-xl text-base"
+                className='mt-1 h-11 w-full rounded-xl text-base'
               >
                 {submitLabel}
               </Button>
@@ -236,12 +241,12 @@ function Field({
   onChange: (v: string) => void;
 } & Omit<React.ComponentProps<typeof Input>, 'value' | 'onChange'>) {
   return (
-    <label className="flex flex-col gap-1.5 text-sm">
-      <span className="font-medium opacity-80">{label}</span>
+    <label className='flex flex-col gap-1.5 text-sm'>
+      <span className='font-medium opacity-80'>{label}</span>
       <Input
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="h-11 rounded-xl bg-(--card-color) text-base"
+        className='h-11 rounded-xl bg-(--card-color) text-base'
         {...rest}
       />
     </label>
@@ -258,27 +263,43 @@ function AuthSwitcher({
   const link =
     'font-medium text-(--secondary-color) underline underline-offset-4 hover:text-(--main-color)';
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 pt-2 text-sm opacity-90">
+    <div className='flex flex-wrap items-center justify-center gap-x-2 gap-y-1 pt-2 text-sm opacity-90'>
       {view === 'signin' && (
         <>
-          <button type="button" className={link} onClick={() => onSwitch('signup')}>
+          <button
+            type='button'
+            className={link}
+            onClick={() => onSwitch('signup')}
+          >
             Create an account
           </button>
-          <span aria-hidden className="opacity-40">
+          <span aria-hidden className='opacity-40'>
             ·
           </span>
-          <button type="button" className={link} onClick={() => onSwitch('reset')}>
+          <button
+            type='button'
+            className={link}
+            onClick={() => onSwitch('reset')}
+          >
             Forgot password?
           </button>
         </>
       )}
       {view === 'signup' && (
-        <button type="button" className={link} onClick={() => onSwitch('signin')}>
+        <button
+          type='button'
+          className={link}
+          onClick={() => onSwitch('signin')}
+        >
           Already have an account? Sign in
         </button>
       )}
       {view === 'reset' && (
-        <button type="button" className={link} onClick={() => onSwitch('signin')}>
+        <button
+          type='button'
+          className={link}
+          onClick={() => onSwitch('signin')}
+        >
           Back to sign in
         </button>
       )}
@@ -289,11 +310,13 @@ function AuthSwitcher({
 function AccountPanel({
   email,
   syncStatus,
+  syncError,
   onSyncNow,
   onSignOut,
 }: {
   email: string;
   syncStatus: string;
+  syncError?: string | null;
   onSyncNow: () => void;
   onSignOut: () => void;
 }) {
@@ -306,10 +329,10 @@ function AccountPanel({
           ? 'Sync error — will retry'
           : 'Idle';
   return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-xl bg-(--card-color) p-4 text-sm">
-        <div className="opacity-70">Signed in as</div>
-        <div className="font-semibold break-all">{email}</div>
+    <div className='flex flex-col gap-4'>
+      <div className='rounded-xl bg-(--card-color) p-4 text-sm'>
+        <div className='opacity-70'>Signed in as</div>
+        <div className='font-semibold break-all'>{email}</div>
         <div
           className={clsx(
             'mt-3 flex items-center gap-2',
@@ -330,18 +353,25 @@ function AccountPanel({
           />
           {label}
         </div>
+        {/* Sideloaded builds have no console, so the actual failure reason has
+            to be readable here or the error is undiagnosable. */}
+        {syncStatus === 'error' && syncError && (
+          <div className='mt-2 rounded-lg bg-(--background-color) p-2 font-mono text-[11px] leading-snug break-all opacity-80'>
+            {syncError}
+          </div>
+        )}
       </div>
-      <div className="flex gap-2">
+      <div className='flex gap-2'>
         <Button
-          variant="outline"
-          className="h-11 flex-1 rounded-xl"
+          variant='outline'
+          className='h-11 flex-1 rounded-xl'
           onClick={onSyncNow}
         >
           Sync now
         </Button>
         <Button
-          variant="destructive"
-          className="h-11 flex-1 rounded-xl"
+          variant='destructive'
+          className='h-11 flex-1 rounded-xl'
           onClick={onSignOut}
         >
           Sign out

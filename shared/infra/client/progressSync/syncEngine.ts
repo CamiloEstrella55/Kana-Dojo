@@ -161,17 +161,25 @@ export async function syncNow(): Promise<void> {
   // Reconcile every store even if one fails, then report if any did — a silent
   // partial sync is how progress goes missing without anyone noticing.
   const failures: string[] = [];
+  let firstReason = '';
   for (const adapter of SYNC_ADAPTERS) {
     try {
       await reconcile(supabase, adapter, remoteByKey.get(adapter.key));
     } catch (err) {
       console.warn(`[sync] reconcile failed for ${adapter.key}:`, err);
       failures.push(adapter.key);
+      if (!firstReason) {
+        firstReason = err instanceof Error ? err.message : String(err);
+      }
     }
   }
 
   if (failures.length > 0) {
-    throw new Error(`sync failed for: ${failures.join(', ')}`);
+    // Keep the underlying reason: the store list alone says nothing about why,
+    // and there is no console to inspect on a sideloaded device.
+    throw new Error(
+      `sync failed for ${failures.length}/${SYNC_ADAPTERS.length} stores (${failures.join(', ')}) — ${firstReason}`,
+    );
   }
 }
 

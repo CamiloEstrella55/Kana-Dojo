@@ -38,6 +38,8 @@ interface AuthContextValue {
   user: User | null;
   session: Session | null;
   syncStatus: SyncStatus;
+  /** Underlying reason when `syncStatus` is 'error' (shown in the UI). */
+  syncError: string | null;
   signUp: (
     email: string,
     password: string,
@@ -68,6 +70,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(configured);
   const [session, setSession] = useState<Session | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  // The underlying failure reason. There is no console on a sideloaded device,
+  // so a bare "sync error" is undiagnosable; surface the real message instead.
+  const [syncError, setSyncError] = useState<string | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
 
   const beginSync = useCallback(async () => {
@@ -75,8 +80,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       stopRef.current = await startAutoSync();
       setSyncStatus('synced');
+      setSyncError(null);
     } catch (err) {
       console.warn('[auth] startAutoSync failed:', err);
+      setSyncError(toMessage(err));
       setSyncStatus('error');
     }
   }, []);
@@ -85,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     stopAutoSync();
     stopRef.current = null;
     setSyncStatus('idle');
+    setSyncError(null);
   }, []);
 
   useEffect(() => {
@@ -209,7 +217,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await syncNow();
       setSyncStatus('synced');
-    } catch {
+      setSyncError(null);
+    } catch (err) {
+      console.warn('[auth] manual sync failed:', err);
+      setSyncError(toMessage(err));
       setSyncStatus('error');
     }
   }, []);
@@ -221,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       session,
       syncStatus,
+      syncError,
       signUp,
       signIn,
       signOut,
@@ -232,6 +244,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       session,
       syncStatus,
+      syncError,
       signUp,
       signIn,
       signOut,
