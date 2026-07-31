@@ -10,6 +10,9 @@ const types = {
   '.js': 'text/javascript',
   '.css': 'text/css',
   '.json': 'application/json',
+  // Next.js ships RSC segment payloads (`__next.*.txt`) for client-side
+  // navigation; without a text type they arrive as octet-stream.
+  '.txt': 'text/plain; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
@@ -28,8 +31,14 @@ createServer(async (req, res) => {
       if (!extname(fsPath)) fsPath = join(root, p, 'index.html');
     }
     const body = await readFile(fsPath);
+    // RSC segment payloads must be served as `text/x-component`; the App Router
+    // discards the response otherwise and client-side navigation silently
+    // does nothing.
+    const isRsc = 'rsc' in (req.headers ?? {}) || /(^|[?&])_rsc=/.test(req.url);
     res.writeHead(200, {
-      'content-type': types[extname(fsPath)] || 'application/octet-stream',
+      'content-type': isRsc
+        ? 'text/x-component'
+        : types[extname(fsPath)] || 'application/octet-stream',
     });
     res.end(body);
   } catch {

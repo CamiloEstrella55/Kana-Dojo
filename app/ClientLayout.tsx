@@ -33,6 +33,7 @@ import {
   AccountButton,
 } from '@/shared/infra/client/auth';
 import { ensureNativeInit } from '@/shared/infra/client/native/initNative';
+import NativeNavigation from '@/shared/infra/client/native/NativeNavigation';
 
 // Initialize adaptive selector early to load persisted weights from IndexedDB
 // This runs once at module load time, ensuring weights are ready before games start
@@ -277,6 +278,7 @@ export default function ClientLayout({
         <AchievementIntegration />
         <BackToTop />
         <MobileBottomBar />
+        {isMobileExport && <NativeNavigation />}
         {isMobileExport && <AuthGate />}
         <AuthModal />
       </div>

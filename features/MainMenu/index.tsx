@@ -3,28 +3,25 @@ import { Fragment, lazy, Suspense, useState, useEffect } from 'react';
 import { Link } from '@/core/i18n/routing';
 import KanaDojoBanner from './KanaDojoBanner';
 import Info from '@/shared/ui-composite/Menu/Info';
-import NightlyBanner from '@/shared/ui-composite/Modals/NightlyBanner';
 import {
   ScrollText,
   FileLock2,
   Cookie,
   Sun,
   Moon,
-  Heart,
   Sparkle,
   FileDiff,
   CircleHelp,
-  Bug,
 } from 'lucide-react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faDiscord, faGithub } from '@fortawesome/free-brands-svg-icons';
 import clsx from 'clsx';
 import { useClick } from '@/shared/hooks/generic/useAudio';
 import { useThemePreferences } from '@/features/Preferences';
 import useDecorationsStore from '@/shared/store/useDecorationsStore';
 import { useMediaQuery } from 'react-responsive';
 
-const Decorations = lazy(() => import('@/shared/ui-composite/Decorations/Decorations'));
+const Decorations = lazy(
+  () => import('@/shared/ui-composite/Decorations/Decorations'),
+);
 
 const USE_NEW_DESIGN = false;
 
@@ -34,7 +31,7 @@ const MainMenu = () => {
 
   const { theme, setTheme, isGlassMode } = useThemePreferences();
 
-  const characterTileClassName = (delay?: string, floatDistance?: string) =>
+  const characterTileClassName = (delay?: string, _floatDistance?: string) =>
     clsx(
       'inline-flex h-12 w-12 items-center justify-center rounded-2xl',
       'bg-(--secondary-color) group-hover:bg-(--main-color) text-(--background-color)',
@@ -56,22 +53,10 @@ const MainMenu = () => {
     state => state.toggleExpandDecorations,
   );
 
-  const [showBanner, setShowBanner] = useState(false);
-
+  // Render-once guard: the decorations below depend on a media query, which is
+  // only knowable on the client.
   useEffect(() => {
-    // 1. Check if the user has already dismissed the banner
-    const hasDismissed = localStorage.getItem('nightly_banner_dismissed');
-
-    // Only show if they haven't dismissed it yet
-    if (!hasDismissed) {
-      setShowBanner(true);
-    }
-  }, []);
-
-  const handleDismiss = () => {
-    localStorage.setItem('nightly_banner_dismissed', 'true');
-  };
-  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMounted(true);
   }, []);
   const links = [
@@ -178,22 +163,6 @@ const MainMenu = () => {
               type='button'
               onClick={() => {
                 playClick();
-                window.open('https://tally.so/r/2E4rB9', '_blank', 'noopener');
-              }}
-              className={clsx(
-                'inline-flex sm:hidden',
-                'duration-250 hover:cursor-pointer hover:scale-105',
-                'active:scale-100 active:duration-225',
-                'fill-current text-(--secondary-color) hover:text-(--main-color)',
-              )}
-              aria-label='Report a bug'
-            >
-              <Bug size={32} fill='currentColor' />
-            </button>
-            <button
-              type='button'
-              onClick={() => {
-                playClick();
                 setTheme(theme === 'dark' ? 'light' : 'dark');
               }}
               className={clsx(
@@ -206,131 +175,86 @@ const MainMenu = () => {
             >
               {theme === 'dark' ? <Moon size={32} /> : <Sun size={32} />}
             </button>
-
-            <FontAwesomeIcon
-              icon={faDiscord}
-              size='2x'
-              className={clsx(
-                'duration-250 hover:cursor-pointer hover:scale-105',
-                'active:scale-100 active:duration-225',
-                'md:hidden',
-                'text-(--secondary-color) hover:text-(--main-color)',
-              )}
-              onClick={() => {
-                playClick();
-                window.open('https://discord.gg/CyvBNNrSmb', '_blank');
-              }}
-            />
-            <FontAwesomeIcon
-              icon={faGithub}
-              size='2x'
-              className={clsx(
-                'duration-250 hover:cursor-pointer hover:scale-105',
-                'active:scale-100 active:duration-225',
-                'text-(--secondary-color) hover:text-(--main-color)',
-              )}
-              onClick={() => {
-                playClick();
-                window.open('https://github.com/lingdojo/kana-dojo', '_blank');
-              }}
-            />
-            <button
-              type='button'
-              onClick={() => {
-                playClick();
-                window.open('https://tally.so/r/2E4rB9', '_blank', 'noopener');
-              }}
-              className={clsx(
-                'hidden sm:inline-flex',
-                'duration-250 hover:cursor-pointer hover:scale-105',
-                'active:scale-100 active:duration-225',
-                ' text-(--secondary-color) hover:text-(--main-color)',
-              )}
-              aria-label='Report a bug'
-            >
-              <Bug size={32}  />
-            </button>
-            <Heart
-              size={32}
-              className={clsx(
-                'duration-250 hover:cursor-pointer hover:scale-105',
-                'active:scale-100 active:duration-225',
-                'animate-bounce fill-current text-red-500',
-              )}
-              onClick={() => {
-                playClick();
-                window.open('https://ko-fi.com/kanadojo', '_blank');
-              }}
-            />
           </div>
         </div>
         <Info />
-        <div className={clsx(
-          'w-full rounded-2xl',
-          USE_NEW_DESIGN
-            ? 'border-4 border-(--border-color) bg-(--card-color) overflow-hidden'
-            : 'border-1 border-(--border-color) bg-(--background-color) p-1'
-        )}>
-          <div className={clsx(
-            'rounded-2xl w-full',
+        <div
+          className={clsx(
+            'w-full rounded-2xl',
             USE_NEW_DESIGN
-              ? 'flex flex-col md:flex-row'
-              : 'bg-(--card-color) flex flex-col md:flex-row duration-250 transition-all ease-in-out'
-          )}>
-          {links.map((link, i) => (
-            <Fragment key={i}>
-              <Link
-                href={link.href}
-                prefetch
-                className={clsx('group w-full', !USE_NEW_DESIGN && 'overflow-hidden')}
-              >
-                <button
+              ? 'overflow-hidden border-4 border-(--border-color) bg-(--card-color)'
+              : 'border-1 border-(--border-color) bg-(--background-color) p-1',
+          )}
+        >
+          <div
+            className={clsx(
+              'w-full rounded-2xl',
+              USE_NEW_DESIGN
+                ? 'flex flex-col md:flex-row'
+                : 'flex flex-col bg-(--card-color) transition-all duration-250 ease-in-out md:flex-row',
+            )}
+          >
+            {links.map((link, i) => (
+              <Fragment key={i}>
+                <Link
+                  href={link.href}
+                  prefetch
                   className={clsx(
-                    'flex h-full w-full text-2xl',
-                    'items-center gap-3',
-                    'justify-start md:justify-center',
-                    'py-8',
-                    mobileLabelInset,
-                    'md:pl-0',
-                    'group',
-                    'hover:cursor-pointer',
-                    USE_NEW_DESIGN
-                      ? 'hover:bg-(--border-color)'
-                      : 'border-(--border-color) md:border-b-4 md:hover:border-(--main-color)/80 hover:bg-(--border-color)',
-                    !USE_NEW_DESIGN && i === 0 && 'rounded-tl-2xl rounded-bl-2xl',
-                    !USE_NEW_DESIGN && i === links.length - 1 && 'rounded-tr-2xl rounded-br-2xl',
+                    'group w-full',
+                    !USE_NEW_DESIGN && 'overflow-hidden',
                   )}
-                  onClick={() => playClick()}
                 >
-                  <span
-                    lang='ja'
-                    className={characterTileClassName(
-                      i === 0
-                        ? '[animation-delay:0ms]'
-                        : i === 1
-                          ? '[animation-delay:800ms]'
-                          : '[animation-delay:1600ms]',
+                  <button
+                    className={clsx(
+                      'flex h-full w-full text-2xl',
+                      'items-center gap-3',
+                      'justify-start md:justify-center',
+                      'py-8',
+                      mobileLabelInset,
+                      'md:pl-0',
+                      'group',
+                      'hover:cursor-pointer',
+                      USE_NEW_DESIGN
+                        ? 'hover:bg-(--border-color)'
+                        : 'border-(--border-color) hover:bg-(--border-color) md:border-b-4 md:hover:border-(--main-color)/80',
+                      !USE_NEW_DESIGN &&
+                        i === 0 &&
+                        'rounded-tl-2xl rounded-bl-2xl',
+                      !USE_NEW_DESIGN &&
+                        i === links.length - 1 &&
+                        'rounded-tr-2xl rounded-br-2xl',
                     )}
+                    onClick={() => playClick()}
                   >
-                    {link.name_ja}
-                  </span>
-                  <span lang='en' className='leading-none'>
-                    {link.name_en}
-                  </span>
-                </button>
-              </Link>
+                    <span
+                      lang='ja'
+                      className={characterTileClassName(
+                        i === 0
+                          ? '[animation-delay:0ms]'
+                          : i === 1
+                            ? '[animation-delay:800ms]'
+                            : '[animation-delay:1600ms]',
+                      )}
+                    >
+                      {link.name_ja}
+                    </span>
+                    <span lang='en' className='leading-none'>
+                      {link.name_en}
+                    </span>
+                  </button>
+                </Link>
 
-              {i < links.length - 1 && (
-                <div
-                  className={clsx(
-                    'md:h-auto md:w-0 md:border-l-1',
-                    'border-(--border-color)',
-                    'w-full border-t-1 border-(--border-color)',
-                  )}
-                />
-              )}
-            </Fragment>
-          ))}
+                {i < links.length - 1 && (
+                  <div
+                    className={clsx(
+                      'md:h-auto md:w-0 md:border-l-1',
+                      'border-(--border-color)',
+                      'w-full border-t-1 border-(--border-color)',
+                    )}
+                  />
+                )}
+              </Fragment>
+            ))}
           </div>
         </div>
       </div>
@@ -352,7 +276,8 @@ const MainMenu = () => {
               key={i}
               className={clsx(
                 'flex flex-row items-center gap-1 text-(--secondary-color) hover:cursor-pointer hover:text-(--main-color)',
-                (link.name === 'credits' || link.name === 'about') && 'hidden sm:flex',
+                (link.name === 'credits' || link.name === 'about') &&
+                  'hidden sm:flex',
               )}
               onClick={() => playClick()}
             >
@@ -383,4 +308,3 @@ const MainMenu = () => {
 };
 
 export default MainMenu;
-
